@@ -28,6 +28,7 @@ from .base import (
     combine_voice_prompts as _combine_voice_prompts,
     model_load_progress,
 )
+from ..utils.hf_offline_patch import force_offline_if_cached
 
 logger = logging.getLogger(__name__)
 
