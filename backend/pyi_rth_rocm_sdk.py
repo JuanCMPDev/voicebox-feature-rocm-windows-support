@@ -66,7 +66,7 @@ def _patch_rocm_sdk():
             if len(matching_paths) == 0:
                 raise FileNotFoundError(
                     f"Could not find rocm library '{shortname}' at path "
-                    f"'{relpath},' no match for pattern '{entry_pattern}'"
+                    f"'{relpath}', no match for pattern '{entry_pattern}'"
                 )
             paths.append(matching_paths[0])
 

@@ -59,6 +59,10 @@ export function GpuAcceleration() {
   const cudaDownloading = cudaStatus?.downloading ?? false;
   const rocmAvailable = rocmStatus?.available ?? false;
   const rocmDownloading = rocmStatus?.downloading ?? false;
+  // Fall back to the status payload's download_progress so an in-flight download
+  // remains visible even before the first SSE progress event arrives.
+  const displayedRocmDownloadProgress =
+    rocmDownloadProgress ?? rocmStatus?.download_progress ?? null;
 
   // Clean up health poll on unmount
   useEffect(() => {
@@ -516,30 +520,30 @@ export function GpuAcceleration() {
               <div className="text-sm font-medium">AMD (ROCm)</div>
 
               {/* ROCm Download progress */}
-              {rocmDownloading && rocmDownloadProgress && (
+              {rocmDownloading && displayedRocmDownloadProgress && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span>
-                        {rocmDownloadProgress.filename ||
+                        {displayedRocmDownloadProgress.filename ||
                           (rocmAvailable
                             ? 'Updating ROCm backend...'
                             : 'Downloading ROCm backend...')}
                       </span>
                     </div>
-                    {rocmDownloadProgress.total > 0 && (
+                    {displayedRocmDownloadProgress.total > 0 && (
                       <span className="text-muted-foreground">
-                        {rocmDownloadProgress.progress.toFixed(1)}%
+                        {displayedRocmDownloadProgress.progress.toFixed(1)}%
                       </span>
                     )}
                   </div>
-                  {rocmDownloadProgress.total > 0 && (
+                  {displayedRocmDownloadProgress.total > 0 && (
                     <>
-                      <Progress value={rocmDownloadProgress.progress} className="h-2" />
+                      <Progress value={displayedRocmDownloadProgress.progress} className="h-2" />
                       <div className="text-xs text-muted-foreground">
-                        {formatBytes(rocmDownloadProgress.current)} /{' '}
-                        {formatBytes(rocmDownloadProgress.total)}
+                        {formatBytes(displayedRocmDownloadProgress.current)} /{' '}
+                        {formatBytes(displayedRocmDownloadProgress.total)}
                       </div>
                     </>
                   )}
