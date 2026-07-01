@@ -65,6 +65,10 @@ class TestRocmRequirements:
 
     @pytest.mark.timeout(900)
     @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason="ROCm Windows wheels are only validated on Windows",
+    )
+    @pytest.mark.skipif(
         not os.environ.get("VOICEBOX_TEST_ROCM_INSTALL"),
         reason="Set VOICEBOX_TEST_ROCM_INSTALL=1 to run the heavy install test",
     )

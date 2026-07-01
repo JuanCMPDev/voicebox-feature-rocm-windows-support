@@ -9,6 +9,7 @@ Usage:
     python -m pytest backend/tests/test_rocm_build.py -v -m "slow"    # include E2E
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ from unittest.mock import patch
 
 import pytest
 
-from build_binary import build_server
+from backend.build_binary import build_server
 
 
 class TestRocmBuildArgs:
@@ -26,9 +27,9 @@ class TestRocmBuildArgs:
     def captured_args(self):
         """Run build_server(rocm=True) with mocked PyInstaller and return args."""
         with (
-            patch("build_binary.PyInstaller.__main__.run") as mock_run,
-            patch("build_binary.platform.system", return_value="Linux"),
-            patch("build_binary.os.chdir"),
+            patch("backend.build_binary.PyInstaller.__main__.run") as mock_run,
+            patch("backend.build_binary.platform.system", return_value="Linux"),
+            patch("backend.build_binary.os.chdir"),
         ):
             build_server(rocm=True)
             return mock_run.call_args[0][0]
@@ -80,6 +81,10 @@ class TestRocmBuildCli:
 
 @pytest.mark.slow()
 @pytest.mark.skipif(sys.platform != "win32", reason="ROCm build E2E only runs on Windows")
+@pytest.mark.skipif(
+    os.environ.get("VOICEBOX_TEST_ROCM_BUILD") != "1",
+    reason="Set VOICEBOX_TEST_ROCM_BUILD=1 to run the multi-minute ROCm E2E build test",
+)
 class TestRocmBuildE2E:
     """
     True end-to-end build test.

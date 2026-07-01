@@ -38,9 +38,14 @@ def is_amd_gpu_windows() -> bool:
 
     # Primary method: WMI query for AMD adapters
     try:
+        creationflags = 0
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            # Suppress console flash when launched from a Tauri/GUI parent on Windows
+            creationflags = subprocess.CREATE_NO_WINDOW
         result = subprocess.run(
             [
                 "powershell",
+                "-NoProfile",
                 "-Command",
                 "Get-CimInstance Win32_VideoController | "
                 "Where-Object {$_.AdapterCompatibility -like '*AMD*'} | "
@@ -49,6 +54,8 @@ def is_amd_gpu_windows() -> bool:
             capture_output=True,
             text=True,
             check=True,
+            timeout=10,
+            creationflags=creationflags,
         )
         if int(result.stdout.strip()) > 0:
             return True
