@@ -13,13 +13,13 @@
     "phase_branches": {
       "0": "perf/qwen-f0"
     },
-    "current": null,
+    "current": "0.2",
     "anchor": null,
     "quality_ref": "0.2-a1",
     "perf_ref": "0.2-a1",
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-07T00:28:33-05:00"
+    "updated_at": "2026-10-07T00:54:56-05:00"
   },
   "phases": {
     "0": {
@@ -323,8 +323,8 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 1,
+      "status": "in_progress",
+      "attempts": 2,
       "notes": [
         {
           "at": "2026-10-06T23:03:32-05:00",
@@ -337,11 +337,16 @@
         {
           "at": "2026-10-07T00:21:37-05:00",
           "text": "Reabierta por el usuario: Añadir la pasada hot de contracts.md §2: repite las frases en el mismo proceso que la pasada anterior (server.<pasada>.pid en todas, server.hot.same_process_as), summary.hot_mean_s, hot_median_s, rtf_hot_mean, ufdb_lines_added_hot, stage_ms_mean_hot y talker_steps_per_s_mean_hot (stage_ms_mean y talker_steps_per_s_mean siguen sobre warm), y el escenario batch compara con hot (ref_pass). Cúbrelo en --self-test y en backend/tests/test_bench_tts.py."
+        },
+        {
+          "at": "2026-10-07T00:54:56-05:00",
+          "text": "review: approve — hot reutiliza el servidor de la pasada previa sin recargar (pid y same_process_as, *_hot en summary, stage_ms_mean sigue en warm, batch con ref_pass=hot); self-test y 19 tests OK; 2 minors: pid de hot copiado (no reverificado) y sin test de fallo en pasada keep_alive/hot."
         }
       ],
-      "last_tag": null,
+      "last_tag": "0.2-a2",
       "tags": [
-        "0.2-a1"
+        "0.2-a1",
+        "0.2-a2"
       ],
       "reopened": [
         {
@@ -359,7 +364,10 @@
           }
         }
       ],
-      "extra_attempts": 1
+      "extra_attempts": 1,
+      "branch": "perf/qwen-task/0.2-r2",
+      "base": "038ef1874da197d70a11944d1fdbb003bb87093d",
+      "started_at": "2026-10-07T00:28:55-05:00"
     },
     {
       "id": "0.3",
