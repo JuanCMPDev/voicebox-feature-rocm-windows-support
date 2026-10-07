@@ -81,3 +81,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T17:38:02-05:00 · 2.1 empieza en perf/qwen-task/2.1 (base 7d1df541)
 - 2026-10-07T17:59:08-05:00 · nota 2.1: review: approve — caché guardada como dict+ref_text en CPU (legible con weights_only) y reconstruida como VoiceClonePromptItem en self.device; clave qwen_<size>_<md5>; 2 minor (ficheros .prompt antiguos huérfanos, anotación Tuple[dict,bool] desfasada)
 - 2026-10-07T17:59:08-05:00 · 2.1: verificación 2.1-a1 lanzada
+- 2026-10-07T18:13:48-05:00 · 2.1 cerrada: pass
