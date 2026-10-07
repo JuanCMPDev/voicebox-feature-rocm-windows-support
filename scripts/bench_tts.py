@@ -2,14 +2,15 @@
 
 Starts the development server (``python -m backend.main``) on its own port and data dir, runs the phrases from
 ``scripts/bench_phrases.json`` over HTTP and writes ``<out>/bench.json`` with timings, WAVs, per-stage VBPERF data
-and MIOpen Find-Db line counts. Every pass (``cold``, ``warm``) uses a brand-new server process.
+and MIOpen Find-Db line counts. ``cold`` and ``warm`` each use a brand-new server process; ``hot`` repeats the
+same phrases in the process of the previous pass (no restart, no reload), so every length is already seen.
 
 The script never imports anything from ``backend/`` (contracts, section 5): the evaluator must not change when the
 code it evaluates changes. It only needs the standard library.
 
 Usage:
     python scripts/bench_tts.py --config perf-loop/config.json --tag <tag> --out perf-loop/bench/<tag>
-        [--phrases all|p01,p02,...] [--passes cold,warm] [--miopen-db fresh|persist]
+        [--phrases all|p01,p02,...] [--passes cold,warm,hot] [--miopen-db fresh|persist]
         [--env KEY=VALUE]... [--scenario contention|batch] [--concurrent N]
     python scripts/bench_tts.py --self-test
 """
@@ -51,7 +52,9 @@ PHRASES_FILE = ROOT / "scripts" / "bench_phrases.json"
 
 VBPERF_PREFIX = "VBPERF "
 CODEC_FRAMES_PER_AUDIO_S = 12.5
-VALID_PASSES = ("cold", "warm")
+VALID_PASSES = ("cold", "warm", "hot")
+# Passes that reuse the server process of the pass right before them instead of starting a new one.
+REUSE_PASSES = frozenset({"hot"})
 VALID_SCENARIOS = ("contention", "batch")
 TERMINAL_STATUSES = frozenset({"completed", "failed"})
 # Fields summed when one generation reports the same stage more than once (e.g. several text chunks).
@@ -72,6 +75,8 @@ DIRTY_CMD = ("git", "status", "--porcelain", "--untracked-files=all", "--", ".",
 NET_ERRORS = (OSError, http.client.HTTPException)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Uvicorn's startup line; on Windows the venv python.exe is a launcher, so Popen.pid is not the server's PID.
+_SERVER_PID_RE = re.compile(r"Started server process \[(\d+)\]")
 
 
 class BenchError(Exception):
@@ -147,7 +152,7 @@ def select_phrases(phrases: list[dict], spec: str | None) -> list[dict]:
 
 
 def parse_passes(spec: str | None) -> list[str]:
-    """Parse ``--passes`` (execution order, each name at most once)."""
+    """Parse ``--passes`` (execution order, each name at most once; ``hot`` needs a pass before it)."""
     names = [p.strip() for p in (spec or "").split(",") if p.strip()]
     if not names:
         raise BenchError("--passes is empty")
@@ -156,6 +161,8 @@ def parse_passes(spec: str | None) -> list[str]:
         raise BenchError(f"unknown passes: {', '.join(bad)} (valid: {', '.join(VALID_PASSES)})")
     if len(set(names)) != len(names):
         raise BenchError("--passes repeats a pass")
+    if names[0] in REUSE_PASSES:
+        raise BenchError(f"--passes cannot start with {names[0]}: it reuses the server of the previous pass")
     return names
 
 
@@ -385,15 +392,11 @@ def _ufdb_added(pass_rec: dict | None) -> int | None:
     return None
 
 
-def compute_summary(passes: list[dict], server: dict, phrases_n: int, ufdb_total: int | None) -> dict:
-    """Summary block of bench.json. Stage means use the warm pass, or the last pass if there is no warm one."""
-    by_name = {p["name"]: p for p in passes}
-    warm, cold = by_name.get("warm"), by_name.get("cold")
-    stage_ref = warm or (passes[-1] if passes else None)
-
+def _stage_means(pass_rec: dict | None) -> tuple[dict[str, float | None], float | None]:
+    """Mean ms per VBPERF stage and mean talker steps/s over the phrases of one pass."""
     stage_values: dict[str, list[float]] = {}
     talker_sps: list[float] = []
-    for rec in (stage_ref or {}).get("phrases", []):
+    for rec in (pass_rec or {}).get("phrases", []):
         stages = rec.get("stages") or {}
         for name, payload in stages.items():
             if isinstance(payload, dict) and _is_number(payload.get("ms")):
@@ -401,21 +404,43 @@ def compute_summary(passes: list[dict], server: dict, phrases_n: int, ufdb_total
         sps = (stages.get("talker") or {}).get("steps_per_s")
         if _is_number(sps):
             talker_sps.append(sps)
+    return {name: _mean(values) for name, values in stage_values.items()}, _mean(talker_sps)
 
-    first_load = (server.get(passes[0]["name"]) or {}).get("load_s") if passes else None
-    return {
-        "warm_mean_s": _mean(_pass_values(warm, "wall_s")),
-        "warm_median_s": _median(_pass_values(warm, "wall_s")),
-        "cold_mean_s": _mean(_pass_values(cold, "wall_s")),
-        "rtf_warm_mean": _mean(_pass_values(warm, "rtf")),
-        "talker_steps_per_s_mean": _mean(talker_sps),
-        "ufdb_lines_added_cold": _ufdb_added(cold),
-        "ufdb_lines_added_warm": _ufdb_added(warm),
-        "ufdb_lines_total": ufdb_total,
-        "stage_ms_mean": {name: _mean(values) for name, values in stage_values.items()},
-        "load_s": first_load,
-        "phrases_n": phrases_n,
-    }
+
+def compute_summary(passes: list[dict], server: dict, phrases_n: int, ufdb_total: int | None) -> dict:
+    """Summary block of bench.json.
+
+    ``stage_ms_mean`` and ``talker_steps_per_s_mean`` use the warm pass (or the last pass if there is no warm one);
+    ``stage_ms_mean_hot`` and ``talker_steps_per_s_mean_hot`` use the hot pass and are null without one.
+    Per-pass means, medians, RTF and Find-Db growth are null for passes that were not measured.
+    """
+    by_name = {p["name"]: p for p in passes}
+    hot = by_name.get("hot")
+    stage_ms, talker_sps = _stage_means(by_name.get("warm") or (passes[-1] if passes else None))
+    stage_ms_hot, talker_sps_hot = _stage_means(hot) if hot else (None, None)
+
+    summary: dict[str, Any] = {}
+    for name in VALID_PASSES:
+        pass_rec = by_name.get(name)
+        summary[f"{name}_mean_s"] = _mean(_pass_values(pass_rec, "wall_s"))
+        summary[f"{name}_median_s"] = _median(_pass_values(pass_rec, "wall_s"))
+        summary[f"rtf_{name}_mean"] = _mean(_pass_values(pass_rec, "rtf"))
+    summary["talker_steps_per_s_mean"] = talker_sps
+    summary["talker_steps_per_s_mean_hot"] = talker_sps_hot
+    for name in VALID_PASSES:
+        summary[f"ufdb_lines_added_{name}"] = _ufdb_added(by_name.get(name))
+    summary["ufdb_lines_total"] = ufdb_total
+    summary["stage_ms_mean"] = stage_ms
+    summary["stage_ms_mean_hot"] = stage_ms_hot
+    summary["load_s"] = (server.get(passes[0]["name"]) or {}).get("load_s") if passes else None
+    summary["phrases_n"] = phrases_n
+    return summary
+
+
+def batch_reference_pass(passes: list[dict]) -> dict | None:
+    """Pass whose individual ``wall_s`` the batch scenario compares against: hot, else warm, else the last one."""
+    by_name = {p["name"]: p for p in passes}
+    return by_name.get("hot") or by_name.get("warm") or (passes[-1] if passes else None)
 
 
 def assemble_bench_json(
@@ -705,6 +730,16 @@ def run_generations(
 # ---------------------------------------------------------------------------
 
 
+def server_pid_from_log(lines: Iterable[str]) -> int | None:
+    """PID that uvicorn reports in ``Started server process [N]`` (the last one if there are several)."""
+    pid = None
+    for line in lines:
+        match = _SERVER_PID_RE.search(line)
+        if match:
+            pid = int(match.group(1))
+    return pid
+
+
 def _kill_tree(proc: subprocess.Popen) -> None:
     if proc.poll() is not None:
         return
@@ -731,6 +766,7 @@ class ServerProcess:
         self.port = port
         self.client = HttpClient(f"http://127.0.0.1:{port}")
         self.proc: subprocess.Popen | None = None
+        self.pid: int | None = None
         self.started_at = 0.0
         self._log_fh: Any = None
 
@@ -767,14 +803,19 @@ class ServerProcess:
         return "\n".join(self.log_lines()[-n:])
 
     def wait_healthy(self, timeout_s: float) -> float:
-        """Wait for GET /health and return seconds since the process started."""
+        """Wait for GET /health, record the server PID and return seconds since the process started.
+
+        The PID is the one uvicorn logs (the real interpreter behind the venv launcher), else Popen's.
+        """
         deadline = self.started_at + timeout_s
         while True:
             self.ensure_alive()
             with contextlib.suppress(*NET_ERRORS):
                 status, data = self.client.json_request("GET", "/health", timeout=10)
                 if status == 200 and isinstance(data, dict):
-                    return time.perf_counter() - self.started_at
+                    elapsed = time.perf_counter() - self.started_at
+                    self.pid = server_pid_from_log(self.log_lines()) or (self.proc.pid if self.proc else None)
+                    return elapsed
             if time.perf_counter() > deadline:
                 raise BenchError(f"/health did not answer within {timeout_s:.0f} s; last log lines:\n{self.log_tail()}")
             time.sleep(0.5)
@@ -864,6 +905,8 @@ class BenchRun:
         self.scenarios: dict[str, dict | None] = {"contention": None, "batch": None}
         self.errors: list[str] = []
         self._active: ServerProcess | None = None
+        # Pass records run on ``_active``; their VBPERF stages are attached once that server stops.
+        self._served: list[dict] = []
 
     # -- top level -----------------------------------------------------------
 
@@ -894,11 +937,15 @@ class BenchRun:
             self.miopen_db,
             " ".join(build_server_cmd(self.python, self.port, self.data_dir)),
         )
+        return self._execute()
 
+    def _execute(self) -> int:
+        """Run the passes (a pass followed by ``hot`` keeps its server for it), then write bench.json."""
         try:
             for idx, name in enumerate(self.passes):
                 is_last = idx == len(self.passes) - 1
-                self._run_pass(name, scenario=self.scenario if is_last else None)
+                keep_alive = not is_last and self.passes[idx + 1] in REUSE_PASSES
+                self._run_pass(name, scenario=self.scenario if is_last else None, keep_alive=keep_alive)
         except BenchError as e:
             self.errors.append(str(e))
             logger.error("%s", e)
@@ -944,8 +991,23 @@ class BenchRun:
         env_payload, _ = collect_vbperf(parse_vbperf_lines(server.log_lines()))
         return env_payload
 
-    def _run_pass(self, name: str, *, scenario: str | None) -> None:
+    def _new_server(self, name: str) -> ServerProcess:
         assert self.data_dir is not None
+        return ServerProcess(
+            cmd=build_server_cmd(self.python, self.port, self.data_dir),
+            env=self.server_env,
+            cwd=self.root,
+            log_path=self.out / "logs" / f"server-{name}.log",
+            port=self.port,
+        )
+
+    def _run_pass(self, name: str, *, scenario: str | None, keep_alive: bool = False) -> None:
+        """Run one pass. ``hot`` reuses the live server of the previous pass; ``keep_alive`` leaves it running."""
+        reuse = name in REUSE_PASSES
+        server = self._active
+        if reuse and (server is None or not self.pass_records):
+            raise BenchError(f"the {name} pass needs the server of the previous pass, which is not running")
+        prev_name = self.pass_records[-1]["name"] if reuse else None
         pass_dir = self.out / name
         if pass_dir.is_dir():
             for old in pass_dir.glob("*.wav"):
@@ -955,30 +1017,32 @@ class BenchRun:
             "miopen_db_path": None,
             "ufdb_lines_before": None,
             "ufdb_lines_after": None,
-            "server_log": f"logs/server-{name}.log",
+            "server_log": self.pass_records[-1]["server_log"] if reuse else f"logs/server-{name}.log",
             "phrases": [],
         }
         self.pass_records.append(pass_rec)
-        info: dict[str, float | None] = {"startup_s": None, "load_s": None}
+        info: dict[str, Any] = {"startup_s": None, "load_s": None, "pid": None, "same_process_as": prev_name}
         self.server_info[name] = info
 
-        server = ServerProcess(
-            cmd=build_server_cmd(self.python, self.port, self.data_dir),
-            env=self.server_env,
-            cwd=self.root,
-            log_path=self.out / "logs" / f"server-{name}.log",
-            port=self.port,
-        )
-        logger.info("pass %s: starting the server", name)
-        self._active = server
-        server.start()
+        if reuse:
+            assert server is not None
+            logger.info("pass %s: reusing the %s server (pid %s), no restart or reload", name, prev_name, server.pid)
+            server.ensure_alive()
+        else:
+            server = self._new_server(name)
+            logger.info("pass %s: starting the server", name)
+            self._active = server
+            server.start()
+        self._served.append(pass_rec)
         try:
-            info["startup_s"] = _round(server.wait_healthy(self.start_timeout_s))
-            if self.engine == "qwen":
-                info["load_s"] = _round(server.load_model(self.model_size, self.start_timeout_s))
-            logger.info(
-                "pass %s: server ready in %.1f s, model loaded in %s s", name, info["startup_s"], info["load_s"]
-            )
+            if not reuse:
+                info["startup_s"] = _round(server.wait_healthy(self.start_timeout_s))
+                if self.engine == "qwen":
+                    info["load_s"] = _round(server.load_model(self.model_size, self.start_timeout_s))
+                logger.info(
+                    "pass %s: server ready in %.1f s, model loaded in %s s", name, info["startup_s"], info["load_s"]
+                )
+            info["pid"] = server.pid
 
             db_dir = resolve_miopen_db_dir(self._current_env_payload(server), self.server_env)
             pass_rec["miopen_db_path"] = str(db_dir)
@@ -998,22 +1062,28 @@ class BenchRun:
             elif scenario == "batch":
                 self.scenarios["batch"] = self._scenario_batch(server)
         finally:
-            self._stop_server(server)
-            env_payload, stages = collect_vbperf(parse_vbperf_lines(server.log_lines()))
-            if env_payload is not None:
-                self.env_payload = env_payload
-            for rec in pass_rec["phrases"]:
-                finalize_phrase(rec, stages.get(rec["gen_id"]) if rec.get("gen_id") else None)
+            # On an error the server is stopped by _execute, which then finalizes this pass too.
+            if not keep_alive:
+                self._stop_server(server)
 
     def _stop_server(self, server: ServerProcess) -> None:
+        """Stop the server and attach the VBPERF data of its log to every pass that ran on it."""
         try:
             server.stop()
         except BenchError as e:
             self.errors.append(str(e))
             logger.error("%s", e)
         finally:
+            served: list[dict] = []
             if self._active is server:
                 self._active = None
+                served, self._served = self._served, []
+            env_payload, stages = collect_vbperf(parse_vbperf_lines(server.log_lines()))
+            if env_payload is not None:
+                self.env_payload = env_payload
+            for pass_rec in served:
+                for rec in pass_rec["phrases"]:
+                    finalize_phrase(rec, stages.get(rec["gen_id"]) if rec.get("gen_id") else None)
 
     def _run_phrase(self, server: ServerProcess, phrase: dict, pass_name: str) -> dict:
         rec = new_phrase_record(phrase)
@@ -1126,9 +1196,13 @@ class BenchRun:
         return result
 
     def _scenario_batch(self, server: ServerProcess) -> dict:
-        """Queue N distinct phrases at once and compare against their individual warm-pass times."""
-        by_name = {p["name"]: p for p in self.pass_records}
-        ref_pass = by_name.get("warm") or self.pass_records[-1]
+        """Queue N distinct phrases at once and compare against their individual times in the hot pass (else warm).
+
+        Hot runs in an already warmed process with every length seen, so the batch does not win just by being
+        compared against a freshly started server.
+        """
+        ref_pass = batch_reference_pass(self.pass_records)
+        assert ref_pass is not None
         walls = {
             r["id"]: r["wall_s"]
             for r in ref_pass["phrases"]
@@ -1140,7 +1214,7 @@ class BenchRun:
             "n": len(chosen),
             "n_requested": n_requested,
             "phrases": [p["id"] for p in chosen],
-            "reference_pass": ref_pass["name"],
+            "ref_pass": ref_pass["name"],
             "total_s": None,
             "sum_individual_s": _round(sum(walls[p["id"]] for p in chosen)) if chosen else None,
             "throughput_gain": None,
@@ -1263,7 +1337,81 @@ class _FakeClient:
 
     def request(self, method: str, path: str, **_: Any) -> tuple[int, bytes]:
         self.calls.append((method, path))
+        if method == "GET" and path.startswith("/audio/"):
+            return 200, _wav_bytes(2.0)
         return 200, b"{}"
+
+    def generate_posts(self) -> int:
+        return self.calls.count(("POST", "/generate"))
+
+
+class _FakeServer:
+    """Stand-in for ServerProcess: no process; a _FakeClient and a log with one VBPERF talker line per generation.
+
+    The talker of the i-th generation (0-based) takes ``1000 * (i + 1)`` ms, so passes on one server differ.
+    """
+
+    def __init__(self, name: str, pid: int, db_dir: Path):
+        self.name = name
+        self.pid: int | None = None
+        self.client = _FakeClient(["completed"])
+        self.starts = 0
+        self.stops = 0
+        self.posts_at_stop: int | None = None
+        self._pid = pid
+        self._db_dir = db_dir
+
+    def start(self) -> None:
+        self.starts += 1
+
+    def wait_healthy(self, timeout_s: float) -> float:
+        self.pid = server_pid_from_log(self.log_lines())
+        return 0.5
+
+    def load_model(self, model_size: str, timeout_s: float) -> float:
+        return 1.5
+
+    def ensure_alive(self) -> None:
+        if self.stops:
+            raise BenchError(f"fake server {self.name} is stopped")
+
+    def log_lines(self) -> list[str]:
+        env = {"stage": "env", "miopen_user_db_path": str(self._db_dir), "code_path": "E:/wt/backend"}
+        lines = [f"INFO:     Started server process [{self._pid}]", VBPERF_PREFIX + json.dumps(env)]
+        for idx, gen_id in enumerate(self.client.polls):
+            ms = 1000.0 * (idx + 1)
+            event = {"gen_id": gen_id, "stage": "talker", "ms": ms, "steps": 10, "steps_per_s": ms / 100}
+            lines.append(VBPERF_PREFIX + json.dumps(event))
+        return lines
+
+    def stop(self) -> None:
+        self.stops += 1
+        self.posts_at_stop = self.client.generate_posts()
+
+
+class _FakeBenchRun(BenchRun):
+    """BenchRun whose servers are _FakeServer objects with PIDs 101, 102, ..."""
+
+    def __init__(self, args: argparse.Namespace, db_dir: Path):
+        super().__init__(args)
+        self.db_dir = db_dir
+        self.fake_servers: list[_FakeServer] = []
+
+    def _new_server(self, name: str) -> Any:
+        server = _FakeServer(name, 101 + len(self.fake_servers), self.db_dir)
+        self.fake_servers.append(server)
+        return server
+
+
+def run_with_fake_servers(tmp: Path, passes: str, *extra_args: str) -> tuple[int, dict, list[_FakeServer]]:
+    """Run the pass lifecycle on p01,p02 against fake servers under ``tmp``; return (exit code, bench.json, servers)."""
+    config = tmp / "config.json"
+    config.write_text(json.dumps({"bench": {"profile_id": "prof-1", "port": 1}}), encoding="utf-8")
+    argv = ["--config", str(config), "--tag", "fake", "--out", str(tmp / "out"), "--phrases", "p01,p02"]
+    run = _FakeBenchRun(build_arg_parser().parse_args([*argv, "--passes", passes, *extra_args]), tmp / "miopen-db")
+    run.data_dir = tmp / "data"
+    code = run._execute()
+    return code, _read_json(run.out / "bench.json"), run.fake_servers
 
 
 def _expect(failures: list[str], label: str, got: Any, want: Any) -> None:
@@ -1350,24 +1498,57 @@ def _selftest_phrase_and_summary(failures: list[str]) -> None:
             _ph("p03", 19.0, 5.0),
         ],
     }
-    server = {"cold": {"load_s": 41.2, "startup_s": 9.0}, "warm": {"load_s": 12.0, "startup_s": 8.0}}
-    summary = compute_summary([cold, warm], server, 3, 47)
+    hot = {
+        "name": "hot",
+        "ufdb_lines_before": 47,
+        "ufdb_lines_after": 48,
+        "phrases": [
+            _ph("p01", 6.0, 3.0, {"talker": {"ms": 4000.0, "steps": 40, "steps_per_s": 10.0}, "codec": {"ms": 500.0}}),
+            _ph("p02", 8.0, 4.0, {"talker": {"ms": 5000.0, "steps": 60, "steps_per_s": 12.0}}),
+            _ph("p03", 13.0, 5.0),
+        ],
+    }
+    server = {
+        "cold": {"load_s": 41.2, "startup_s": 9.0, "pid": 11, "same_process_as": None},
+        "warm": {"load_s": 12.0, "startup_s": 8.0, "pid": 22, "same_process_as": None},
+        "hot": {"load_s": None, "startup_s": None, "pid": 22, "same_process_as": "warm"},
+    }
+    summary = compute_summary([cold, warm, hot], server, 3, 48)
     _expect(failures, "summary: warm mean", summary["warm_mean_s"], 17.0)
     _expect(failures, "summary: warm median", summary["warm_median_s"], 17.0)
     _expect(failures, "summary: cold mean", summary["cold_mean_s"], 140.0)
+    _expect(failures, "summary: cold median", summary["cold_median_s"], 140.0)
     _expect(failures, "summary: rtf warm", summary["rtf_warm_mean"], round((5.0 + 4.25 + 3.8) / 3, 3))
-    _expect(failures, "summary: talker sps", summary["talker_steps_per_s_mean"], 4.5)
+    _expect(failures, "summary: hot mean", summary["hot_mean_s"], 9.0)
+    _expect(failures, "summary: hot median", summary["hot_median_s"], 8.0)
+    _expect(failures, "summary: rtf hot", summary["rtf_hot_mean"], round((2.0 + 2.0 + 2.6) / 3, 3))
+    _expect(failures, "summary: talker sps (warm)", summary["talker_steps_per_s_mean"], 4.5)
+    _expect(failures, "summary: talker sps hot", summary["talker_steps_per_s_mean_hot"], 11.0)
     _expect(failures, "summary: ufdb cold", summary["ufdb_lines_added_cold"], 37)
     _expect(failures, "summary: ufdb warm", summary["ufdb_lines_added_warm"], 0)
-    _expect(failures, "summary: ufdb total", summary["ufdb_lines_total"], 47)
-    _expect(failures, "summary: stage means", summary["stage_ms_mean"], {"talker": 10000.0, "codec": 1500.0})
+    _expect(failures, "summary: ufdb hot", summary["ufdb_lines_added_hot"], 1)
+    _expect(failures, "summary: ufdb total", summary["ufdb_lines_total"], 48)
+    _expect(failures, "summary: stage means (warm)", summary["stage_ms_mean"], {"talker": 10000.0, "codec": 1500.0})
+    _expect(failures, "summary: stage means hot", summary["stage_ms_mean_hot"], {"talker": 4500.0, "codec": 500.0})
     _expect(failures, "summary: load_s", summary["load_s"], 41.2)
     _expect(failures, "summary: phrases_n", summary["phrases_n"], 3)
+    _expect(failures, "batch ref: hot first", (batch_reference_pass([cold, warm, hot]) or {}).get("name"), "hot")
+    _expect(failures, "batch ref: else warm", (batch_reference_pass([warm, cold]) or {}).get("name"), "warm")
+    _expect(failures, "batch ref: else last", (batch_reference_pass([cold]) or {}).get("name"), "cold")
 
     only_cold = compute_summary([cold], {"cold": {"load_s": 5.0}}, 2, None)
     _expect(failures, "summary: no warm -> null", (only_cold["warm_mean_s"], only_cold["rtf_warm_mean"]), (None, None))
     _expect(failures, "summary: no warm stages", only_cold["stage_ms_mean"], {})
     _expect(failures, "summary: no warm ufdb", only_cold["ufdb_lines_added_warm"], None)
+    hot_fields = (
+        "hot_mean_s",
+        "hot_median_s",
+        "rtf_hot_mean",
+        "ufdb_lines_added_hot",
+        "stage_ms_mean_hot",
+        "talker_steps_per_s_mean_hot",
+    )
+    _expect(failures, "summary: no hot -> null", [only_cold[k] for k in hot_fields], [None] * len(hot_fields))
     _expect(failures, "summary: empty", compute_summary([], {}, 0, None)["load_s"], None)
 
     doc = assemble_bench_json(
@@ -1379,7 +1560,7 @@ def _selftest_phrase_and_summary(failures: list[str]) -> None:
         args={},
         env_checks=None,
         server=server,
-        passes=[cold, warm],
+        passes=[cold, warm, hot],
         scenarios={"contention": None, "batch": None},
         summary=summary,
         errors=[],
@@ -1408,7 +1589,9 @@ def _selftest_cli_and_commands(failures: list[str]) -> None:
             failures.append(f"phrases: {bad_spec!r} should fail")
     _expect(failures, "passes: default", parse_passes("cold,warm"), ["cold", "warm"])
     _expect(failures, "passes: warm only", parse_passes("warm"), ["warm"])
-    for bad_spec in ("hot", "warm,warm", ""):
+    _expect(failures, "passes: with hot", parse_passes("cold, warm, hot"), ["cold", "warm", "hot"])
+    _expect(failures, "passes: hot after cold", parse_passes("cold,hot,warm"), ["cold", "hot", "warm"])
+    for bad_spec in ("hot", "hot,warm", "warm,hot,hot", "tepid", "warm,warm", ""):
         try:
             parse_passes(bad_spec)
         except BenchError:
@@ -1449,6 +1632,10 @@ def _selftest_cli_and_commands(failures: list[str]) -> None:
     _expect(failures, "miopen: from env line", resolve_miopen_db_dir({"miopen_user_db_path": "A"}, {}), Path("A"))
     _expect(failures, "miopen: from server env", resolve_miopen_db_dir(None, {"MIOPEN_USER_DB_PATH": "B"}), Path("B"))
     _expect(failures, "miopen: default", resolve_miopen_db_dir({"torch": "x"}, {}), default_miopen_db_dir())
+
+    log = ["INFO:     Started server process [7872]", "INFO:     Waiting for application startup."]
+    _expect(failures, "server pid: from uvicorn", server_pid_from_log(log), 7872)
+    _expect(failures, "server pid: missing", server_pid_from_log(["INFO:     Uvicorn running on ..."]), None)
 
     body, ctype = build_multipart({"language": "es"}, {"file": ("reference.wav", b"RIFFdata", "audio/wav")})
     boundary = ctype.split("boundary=", 1)[1]
@@ -1589,12 +1776,57 @@ def _selftest_generations(failures: list[str]) -> None:
         failures.append("generate: a dead server should abort the wait")
 
 
+@contextlib.contextmanager
+def _quiet_bench_logger() -> Any:
+    """Hide the INFO lines of a fake bench run so the self-test output stays readable."""
+    level = logger.level
+    logger.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        logger.setLevel(level)
+
+
+def _selftest_hot_lifecycle(failures: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp, _quiet_bench_logger():
+        tmp_path = Path(tmp)
+        code, doc, servers = run_with_fake_servers(
+            tmp_path, "cold,warm,hot", "--scenario", "batch", "--concurrent", "2"
+        )
+        _expect(failures, "hot: exit code", (code, doc["errors"]), (0, []))
+        started = [(s.name, s.starts, s.stops) for s in servers]
+        _expect(failures, "hot: one process per non-hot pass", started, [("cold", 1, 1), ("warm", 1, 1)])
+        _expect(failures, "hot: warm kept alive for hot + batch", [s.posts_at_stop for s in servers], [2, 6])
+        server = doc["server"]
+        pids = [(server[p]["pid"], server[p]["same_process_as"]) for p in ("cold", "warm", "hot")]
+        _expect(failures, "hot: pid and same_process_as", pids, [(101, None), (102, None), (102, "warm")])
+        _expect(failures, "hot: no reload", (server["hot"]["load_s"], server["warm"]["load_s"]), (None, 1.5))
+        by_name = {p["name"]: p for p in doc["passes"]}
+        _expect(failures, "hot: pass order", list(by_name), ["cold", "warm", "hot"])
+        _expect(failures, "hot: shares the warm log", by_name["hot"]["server_log"], "logs/server-warm.log")
+        hot_wavs = [r["wav"] for r in by_name["hot"]["phrases"]]
+        _expect(failures, "hot: wavs", hot_wavs, ["hot/p01.wav", "hot/p02.wav"])
+        _expect(failures, "hot: wav files", all((tmp_path / "out" / w).is_file() for w in hot_wavs), True)
+        summary = doc["summary"]
+        _expect(failures, "hot: hot_mean_s", _is_number(summary["hot_mean_s"]), True)
+        # Warm server log: gen-0/1 are warm, gen-2/3 hot, gen-4/5 the batch.
+        _expect(failures, "hot: stage_ms_mean on warm", summary["stage_ms_mean"], {"talker": 1500.0})
+        _expect(failures, "hot: stage_ms_mean_hot", summary["stage_ms_mean_hot"], {"talker": 3500.0})
+        _expect(failures, "hot: talker sps hot", summary["talker_steps_per_s_mean_hot"], 35.0)
+        batch = doc["scenarios"]["batch"] or {}
+        hot_sum = _round(sum(r["wall_s"] for r in by_name["hot"]["phrases"]))
+        _expect(
+            failures, "hot: batch ref_pass", (batch.get("ref_pass"), batch.get("sum_individual_s")), ("hot", hot_sum)
+        )
+
+
 SELF_TESTS: tuple[Callable[[list[str]], None], ...] = (
     _selftest_vbperf,
     _selftest_phrase_and_summary,
     _selftest_cli_and_commands,
     _selftest_files,
     _selftest_generations,
+    _selftest_hot_lifecycle,
 )
 
 
@@ -1629,7 +1861,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tag", help="label written to bench.json")
     parser.add_argument("--out", help="output directory (perf-loop/bench/<tag>)")
     parser.add_argument("--phrases", default="all", help="all or a comma-separated list of ids (default: all)")
-    parser.add_argument("--passes", default="cold,warm", help="passes in execution order (default: cold,warm)")
+    parser.add_argument(
+        "--passes",
+        default="cold,warm",
+        help="passes in execution order among cold, warm and hot; hot reuses the previous pass's server "
+        "(default: cold,warm)",
+    )
     parser.add_argument("--miopen-db", choices=("fresh", "persist"), default="persist")
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE", help="extra server env (repeatable)")
     parser.add_argument("--scenario", choices=VALID_SCENARIOS, default=None)
