@@ -1,0 +1,17 @@
+{
+  "language": "es",
+  "phrases": [
+    {"id": "p01", "text": "La mañana amaneció tranquila y algo nublada.", "seed": 1101, "target_s": 3.1},
+    {"id": "p02", "text": "Mi vecino riega las plantas de su balcón cada tarde.", "seed": 1102, "target_s": 3.7},
+    {"id": "p03", "text": "El tren salió puntual de la estación y cruzó el valle despacio.", "seed": 1103, "target_s": 4.5},
+    {"id": "p04", "text": "Cuando terminó la reunión, todos recogieron sus cosas y volvieron a casa.", "seed": 1104, "target_s": 5.2},
+    {"id": "p05", "text": "La biblioteca del barrio abre temprano y se llena de estudiantes antes del mediodía.", "seed": 1105, "target_s": 6.0},
+    {"id": "p06", "text": "Ayer preparamos una sopa de verduras con lo que quedaba en la nevera, y al final salió bastante rica.", "seed": 1106, "target_s": 7.2},
+    {"id": "p07", "text": "El viento soplaba con fuerza sobre la playa, así que decidimos caminar por el paseo, junto a las casas blancas.", "seed": 1107, "target_s": 7.9},
+    {"id": "p08", "text": "Si quieres llegar a tiempo al concierto, conviene salir pronto, porque a esa hora el tráfico de la ciudad suele ser muy lento.", "seed": 1108, "target_s": 9.0},
+    {"id": "p09", "text": "Mi abuela guardaba las cartas antiguas en una caja de madera, y cada invierno las releía despacio, sentada junto a la ventana del salón.", "seed": 1109, "target_s": 9.7},
+    {"id": "p10", "text": "Durante el verano, el pueblo se llena de visitantes que buscan el fresco de la sierra, los caminos de piedra, los ríos limpios y la comida casera.", "seed": 1110, "target_s": 10.4},
+    {"id": "p11", "text": "El profesor explicó la lección con mucha paciencia, respondió a todas las preguntas de la clase y después nos pidió que leyéramos el capítulo siguiente.", "seed": 1111, "target_s": 10.9},
+    {"id": "p12", "text": "Al caer la tarde, los pescadores regresaron al puerto con las redes llenas, mientras las gaviotas volaban en círculos sobre las barcas y el cielo se teñía de naranja.", "seed": 1112, "target_s": 11.9}
+  ]
+}
