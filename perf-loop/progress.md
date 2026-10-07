@@ -39,3 +39,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T03:27:14-05:00 · 0.5 espera decisión humana (approve)
 - 2026-10-07T08:02:51-05:00 · Línea base 0.5-a1 congelada (4 archivos)
 - 2026-10-07T08:02:51-05:00 · 0.5 cerrada: pass — A/A idéntica; escenarios probados
+- 2026-10-07T08:02:54-05:00 · Fase 0 cerrada; empieza la fase 1: Eliminar el coste de MIOpen
