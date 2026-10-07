@@ -13,13 +13,13 @@
     "phase_branches": {
       "0": "perf/qwen-f0"
     },
-    "current": null,
+    "current": "0.3",
     "anchor": null,
     "quality_ref": "0.2-a2",
     "perf_ref": "0.2-a2",
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-07T01:05:05-05:00"
+    "updated_at": "2026-10-07T01:41:38-05:00"
   },
   "phases": {
     "0": {
@@ -447,8 +447,21 @@
         ],
         "tests": true
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/0.3",
+      "base": "bde69c22915b22569addc7cdcc33fb58339d296a",
+      "started_at": "2026-10-07T01:05:24-05:00",
+      "notes": [
+        {
+          "at": "2026-10-07T01:41:38-05:00",
+          "text": "review: approve — compare_wavs.py cumple contracts §3 (SNR común con 999 si idénticos, coseno de locutor con extract_speaker_embedding strict, Whisper greedy es, dur_dev; null si no se pide); sin imports de backend/; self-test, 20 tests y ruff OK; 0.2-a2 contra sí mismo: SNR 999, deltas 0. 4 minors: speaker encoder siempre en CPU (desvío documentado), Whisper en ROCm escribe en la Find-Db por defecto (decidir antes de congelar en 0.5), embed de la referencia sin CompareError, multi-muestra sin normalizar como la app."
+        }
+      ],
+      "last_tag": "0.3-a1",
+      "tags": [
+        "0.3-a1"
+      ]
     },
     {
       "id": "0.4",
