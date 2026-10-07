@@ -13,13 +13,13 @@
     "phase_branches": {
       "0": "perf/qwen-f0"
     },
-    "current": null,
+    "current": "0.2",
     "anchor": null,
     "quality_ref": null,
     "perf_ref": null,
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-06T22:27:36-05:00"
+    "updated_at": "2026-10-06T23:15:22-05:00"
   },
   "phases": {
     "0": {
@@ -289,8 +289,25 @@
           "bench_schema"
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/0.2",
+      "base": "ec2ce0ab91ce59198ddfab7ec86e88cadd5b1c8f",
+      "started_at": "2026-10-06T22:27:54-05:00",
+      "notes": [
+        {
+          "at": "2026-10-06T23:03:32-05:00",
+          "text": "Prueba _dev (persist): p01 cold 103.5 s, warm (proceso nuevo, ufdb sin lineas nuevas) 65.8 s, y la misma p01 en el mismo proceso 11-12 s. La pasada warm del contrato (un proceso nuevo por pasada) paga ~50 s por longitud la primera vez en cada proceso, asi que warm_mean_s no es la 'longitud ya vista' del plan (16,5 s) y batch.throughput_gain sale inflado (5.37 con 2 frases) porque compara warm de proceso nuevo con un lote ya caliente. Conviene decidirlo antes de congelar el arnes en 0.5."
+        },
+        {
+          "at": "2026-10-06T23:15:22-05:00",
+          "text": "review: approve — solo añade scripts/bench_tts.py y su test; cumple contracts §2. Menores: batch throughput_gain inflado (warm en proceso nuevo vs lote ya caliente; decidir antes de congelar en 0.5), ufdb delta entre carpetas distintas si cambia la Find-Db, sondeo a 0,2 s."
+        }
+      ],
+      "last_tag": "0.2-a1",
+      "tags": [
+        "0.2-a1"
+      ]
     },
     {
       "id": "0.3",
