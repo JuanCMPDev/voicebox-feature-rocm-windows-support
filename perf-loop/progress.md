@@ -73,3 +73,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T17:20:46-05:00 · 1.G: el usuario concede 2 intentos más
 - 2026-10-07T17:21:21-05:00 · 1.G: verificación 1.G-a2 lanzada
 - 2026-10-07T17:28:31-05:00 · 1.G espera decisión humana (approve)
+- 2026-10-07T17:37:40-05:00 · 1.G cerrada: pass — Repetida tras banco degradado: hot 8,96 s
