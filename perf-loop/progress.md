@@ -41,3 +41,6 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T08:02:51-05:00 · 0.5 cerrada: pass — A/A idéntica; escenarios probados
 - 2026-10-07T08:02:54-05:00 · Fase 0 cerrada; empieza la fase 1: Eliminar el coste de MIOpen
 - 2026-10-07T08:03:06-05:00 · Rama de fase perf/qwen-f1 creada desde perf/qwen-f0
+- 2026-10-07T08:03:06-05:00 · 1.1 empieza en perf/qwen-task/1.1 (base 94a3cc5b)
+- 2026-10-07T08:19:07-05:00 · nota 1.1: review: approve — MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_FWD/BWD=0 con setdefault solo en ROCm/HIP, aplicado antes y después de import torch; 20 tests nuevos, sin lint nuevo
+- 2026-10-07T08:19:07-05:00 · 1.1: verificación 1.1-a1 lanzada
