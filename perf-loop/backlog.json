@@ -9,7 +9,7 @@
     "carry_commit": "e97d9d52e2c1524ec3a2a98e959183a586846a18",
     "scaffold_commit": "51ce80c0a72addf37fff7a9d1b743fdf7ee13d15",
     "branch_prefix": "perf/qwen",
-    "phase": 1,
+    "phase": 2,
     "phase_branches": {
       "0": "perf/qwen-f0",
       "1": "perf/qwen-f1"
@@ -33,7 +33,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T17:37:41-05:00",
+    "updated_at": "2026-10-07T17:38:01-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
