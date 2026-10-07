@@ -52,3 +52,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T13:26:47-05:00 · nota 1.1: review: approve — immediate=True solo en speech_tokenizer.decode con restauración en finally, solo ROCm GPU, VOICEBOX_CODEC_MIOPEN_IMMEDIATE=0 lo desactiva; 84418fb deshecho a mano; 2 minor: bandera global puede alcanzar a Whisper en concurrencia, tests asumen torch.backends.miopen
 - 2026-10-07T13:26:49-05:00 · 1.1: verificación 1.1-a2 lanzada
 - 2026-10-07T13:40:36-05:00 · 1.1 espera decisión humana (ab)
+- 2026-10-07T15:19:37-05:00 · 1.1 cerrada: pass — A/B: base preferida 3/6, cambio 1, iguales 2

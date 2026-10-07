@@ -14,10 +14,10 @@
       "0": "perf/qwen-f0",
       "1": "perf/qwen-f1"
     },
-    "current": "1.1",
+    "current": null,
     "anchor": "0.5-a1",
-    "quality_ref": "0.5-a1",
-    "perf_ref": "0.5-a1",
+    "quality_ref": "1.1-a2",
+    "perf_ref": "1.1-a2",
     "frozen": {
       "scripts/bench_tts.py": "f110356a8b4c689e7f8b8280c13f6e4e554d0c586a6ce22fe58683047ff97813",
       "scripts/compare_wavs.py": "e3c9f297578d3ef793babcd4b32a3520615c4cff2bc9257608ab75befb333370",
@@ -33,7 +33,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T13:40:36-05:00",
+    "updated_at": "2026-10-07T15:19:37-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -686,7 +686,7 @@
           }
         ]
       },
-      "status": "awaiting_human",
+      "status": "passed",
       "attempts": 2,
       "branch": "perf/qwen-task/1.1",
       "base": "94a3cc5b008a8c640f334cf5a6026bc4e216e154",
@@ -727,11 +727,13 @@
         "1.1-a1"
       ],
       "resume_hint": "implement",
-      "human": {
-        "kind": "ab",
-        "at": "2026-10-07T13:40:36-05:00",
+      "result": {
+        "kind": "pass",
+        "reason": "A/B: base preferida 3/6, cambio 1, iguales 2",
+        "at": "2026-10-07T15:19:37-05:00",
         "tag": "1.1-a2",
-        "page": "perf-loop/bench/1.1-a2/ab/index.html"
+        "verdict": "needs_human",
+        "by_human": true
       }
     },
     {
