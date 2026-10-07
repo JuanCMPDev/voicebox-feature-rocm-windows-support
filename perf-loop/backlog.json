@@ -14,10 +14,10 @@
       "0": "perf/qwen-f0",
       "1": "perf/qwen-f1"
     },
-    "current": "1.4",
+    "current": null,
     "anchor": "0.5-a1",
-    "quality_ref": "1.2-a1",
-    "perf_ref": "1.2-a1",
+    "quality_ref": "1.4-a1",
+    "perf_ref": "1.4-a1",
     "frozen": {
       "scripts/bench_tts.py": "f110356a8b4c689e7f8b8280c13f6e4e554d0c586a6ce22fe58683047ff97813",
       "scripts/compare_wavs.py": "e3c9f297578d3ef793babcd4b32a3520615c4cff2bc9257608ab75befb333370",
@@ -33,7 +33,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T16:35:13-05:00",
+    "updated_at": "2026-10-07T16:48:59-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -905,7 +905,7 @@
           }
         ]
       },
-      "status": "in_progress",
+      "status": "passed",
       "attempts": 1,
       "branch": "perf/qwen-task/1.4",
       "base": "1116af01277b1411fbf2b1590b96b450d27a6ce7",
@@ -918,12 +918,24 @@
         {
           "at": "2026-10-07T16:23:34-05:00",
           "text": "implementer a1: humo _dev p01: carga 17.96 s con warm-up de 5.5 s, primera frase 8.12 a 6.05 s, Find-Db sigue en 24 líneas, SNR vs 1.2-a1 999 dB. Riesgos: más 5.5 s por carga, is_loaded ya es true durante el warm-up, caché de kernels del banco ya poblada"
+        },
+        {
+          "at": "2026-10-07T16:35:22-05:00",
+          "text": "review: approve — warm-up en un módulo nuevo, solo en GPU ROCm, tipo 1, no toca pesos ni defaults, su coste cae dentro de load_s, 45 tests nuevos. 1 minor: is_loaded ya es true durante el warm-up y una petición concurrente compartiría RNG, arreglo futuro con un lock de carga"
         }
       ],
       "last_tag": "1.4-a1",
       "tags": [
         "1.4-a1"
-      ]
+      ],
+      "result": {
+        "kind": "pass",
+        "reason": "",
+        "at": "2026-10-07T16:48:59-05:00",
+        "tag": "1.4-a1",
+        "verdict": "pass",
+        "by_human": false
+      }
     },
     {
       "id": "1.G",

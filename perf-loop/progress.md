@@ -63,3 +63,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T16:23:30-05:00 · nota 1.4: implementer a1: warm-up al cargar el modelo solo en ROCm, decode del codec en 300 y 32..320 paso 32 y un paso de talker con 2 tokens, commit 4a0aed7
 - 2026-10-07T16:23:34-05:00 · nota 1.4: implementer a1: humo _dev p01: carga 17.96 s con warm-up de 5.5 s, primera frase 8.12 a 6.05 s, Find-Db sigue en 24 líneas, SNR vs 1.2-a1 999 dB. Riesgos: más 5.5 s por carga, is_loaded ya es true durante el warm-up, caché de kernels del banco ya poblada
 - 2026-10-07T16:35:13-05:00 · 1.4: verificación 1.4-a1 lanzada
+- 2026-10-07T16:35:22-05:00 · nota 1.4: review: approve — warm-up en un módulo nuevo, solo en GPU ROCm, tipo 1, no toca pesos ni defaults, su coste cae dentro de load_s, 45 tests nuevos. 1 minor: is_loaded ya es true durante el warm-up y una petición concurrente compartiría RNG, arreglo futuro con un lock de carga
+- 2026-10-07T16:48:59-05:00 · 1.4 cerrada: pass
