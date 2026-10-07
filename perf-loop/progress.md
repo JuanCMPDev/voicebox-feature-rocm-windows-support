@@ -72,3 +72,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T17:20:42-05:00 · 1.G bloqueada: rechazada por el usuario: Banco degradado por el entorno: talker de 8,2 a 5,6 pasos/s a mitad de la pasada cold; repetir
 - 2026-10-07T17:20:46-05:00 · 1.G: el usuario concede 2 intentos más
 - 2026-10-07T17:21:21-05:00 · 1.G: verificación 1.G-a2 lanzada
+- 2026-10-07T17:28:31-05:00 · 1.G espera decisión humana (approve)
