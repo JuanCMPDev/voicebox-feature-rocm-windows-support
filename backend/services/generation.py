@@ -23,6 +23,7 @@ from typing import Literal, Optional
 from .. import config
 from . import history, profiles
 from ..database import get_db
+from ..utils import perf_log
 from ..utils.tasks import get_task_manager
 
 
@@ -54,6 +55,8 @@ async def run_generation(
 
     task_manager = get_task_manager()
     bg_db = next(get_db())
+    perf_token = perf_log.set_generation_id(generation_id)
+    perf_total = perf_log.stage("total").start()
 
     try:
         tts_model = get_tts_backend_for_engine(engine)
@@ -88,11 +91,13 @@ async def run_generation(
 
         # --- Normalize (generate and regenerate always; retry skips) -----
         if normalize or mode == "regenerate":
-            audio = normalize_audio(audio)
+            with perf_log.stage("normalize"):
+                audio = normalize_audio(audio)
 
         duration = len(audio) / sample_rate
 
         # --- Persist audio and update status -----------------------------
+        perf_save = perf_log.stage("save").start()
         if mode == "generate":
             final_path = _save_generate(
                 generation_id=generation_id,
@@ -118,6 +123,7 @@ async def run_generation(
                 save_audio=save_audio,
                 db=bg_db,
             )
+        perf_save.stop()
 
         await history.update_generation_status(
             generation_id=generation_id,
@@ -126,6 +132,7 @@ async def run_generation(
             audio_path=final_path,
             duration=duration,
         )
+        perf_total.stop()
 
     except asyncio.CancelledError:
         await history.update_generation_status(
@@ -149,6 +156,7 @@ async def run_generation(
     finally:
         task_manager.complete_generation(generation_id)
         bg_db.close()
+        perf_log.reset_generation_id(perf_token)
 
 
 def _notify_speak_end(generation_id: str, *, status: str) -> None:
@@ -210,7 +218,8 @@ def _save_generate(
                 versions_mod.list_versions(generation_id, db)[0].id, db
             )
         else:
-            processed_audio = apply_effects(audio, sample_rate, effects_chain)
+            with perf_log.stage("effects"):
+                processed_audio = apply_effects(audio, sample_rate, effects_chain)
             processed_path = config.get_generations_dir() / f"{generation_id}_processed.wav"
             save_audio(processed_audio, str(processed_path), sample_rate)
             final_audio_path = str(processed_path)

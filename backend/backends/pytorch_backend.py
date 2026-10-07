@@ -8,6 +8,8 @@ import logging
 import torch
 import numpy as np
 
+from ..utils import perf_log
+
 logger = logging.getLogger(__name__)
 
 from . import TTSBackend, STTBackend, LANGUAGE_CODE_TO_NAME, WHISPER_HF_REPOS
@@ -124,6 +126,10 @@ class PyTorchTTSBackend:
         self.model_size = model_size
         logger.info("TTS model %s loaded successfully", model_size)
 
+        if perf_log.is_enabled():
+            perf_log.instrument_qwen_model(self.model)
+            perf_log.emit_env(perf_log.qwen_env_info(self.model, self.device))
+
     def unload_model(self):
         """Unload the model to free memory."""
         if self.model is not None:
@@ -154,43 +160,47 @@ class PyTorchTTSBackend:
         """
         await self.load_model_async(None)
 
-        # Check cache if enabled
-        if use_cache:
-            cache_key = get_cache_key(audio_path, reference_text)
-            cached_prompt = get_cached_voice_prompt(cache_key)
-            if cached_prompt is not None:
-                # Cache stores as torch.Tensor but actual prompt is dict
-                # Convert if needed
-                if isinstance(cached_prompt, dict):
-                    # For PyTorch backend, the dict should contain tensors, not file paths
-                    # So we can safely return it
-                    return cached_prompt, True
-                elif isinstance(cached_prompt, torch.Tensor):
-                    # Legacy cache format - convert to dict
-                    # This shouldn't happen in practice, but handle it
-                    return {"prompt": cached_prompt}, True
+        with perf_log.stage("reference") as perf_timer:
+            # Check cache if enabled
+            if use_cache:
+                cache_key = get_cache_key(audio_path, reference_text)
+                cached_prompt = get_cached_voice_prompt(cache_key)
+                if cached_prompt is not None:
+                    # Cache stores as torch.Tensor but actual prompt is dict
+                    # Convert if needed
+                    if isinstance(cached_prompt, dict):
+                        # For PyTorch backend, the dict should contain tensors, not file paths
+                        # So we can safely return it
+                        perf_timer.fields["cached"] = True
+                        return cached_prompt, True
+                    elif isinstance(cached_prompt, torch.Tensor):
+                        # Legacy cache format - convert to dict
+                        # This shouldn't happen in practice, but handle it
+                        perf_timer.fields["cached"] = True
+                        return {"prompt": cached_prompt}, True
 
-        def _create_prompt_sync():
-            """Run synchronous voice prompt creation in thread pool."""
-            # Inference runs with the process's default HF_HUB_OFFLINE
-            # state. Forcing offline here (issue #462) regressed online
-            # users whose libraries issue legitimate metadata lookups
-            # during voice-prompt creation.
-            return self.model.create_voice_clone_prompt(
-                ref_audio=str(audio_path),
-                ref_text=reference_text,
-                x_vector_only_mode=False,
-            )
+            def _create_prompt_sync():
+                """Run synchronous voice prompt creation in thread pool."""
+                # Inference runs with the process's default HF_HUB_OFFLINE
+                # state. Forcing offline here (issue #462) regressed online
+                # users whose libraries issue legitimate metadata lookups
+                # during voice-prompt creation.
+                return self.model.create_voice_clone_prompt(
+                    ref_audio=str(audio_path),
+                    ref_text=reference_text,
+                    x_vector_only_mode=False,
+                )
 
-        # Run blocking operation in thread pool
-        voice_prompt_items = await asyncio.to_thread(_create_prompt_sync)
+            # Run blocking operation in thread pool
+            voice_prompt_items = await asyncio.to_thread(_create_prompt_sync)
 
-        # Cache if enabled
-        if use_cache:
-            cache_key = get_cache_key(audio_path, reference_text)
-            cache_voice_prompt(cache_key, voice_prompt_items)
+            # Cache if enabled
+            if use_cache:
+                cache_key = get_cache_key(audio_path, reference_text)
+                cache_voice_prompt(cache_key, voice_prompt_items)
 
-        return voice_prompt_items, False
+            perf_timer.fields["cached"] = False
+            return voice_prompt_items, False
 
     async def combine_voice_prompts(
         self,
