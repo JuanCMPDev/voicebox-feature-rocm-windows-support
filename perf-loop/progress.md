@@ -65,3 +65,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T16:35:13-05:00 · 1.4: verificación 1.4-a1 lanzada
 - 2026-10-07T16:35:22-05:00 · nota 1.4: review: approve — warm-up en un módulo nuevo, solo en GPU ROCm, tipo 1, no toca pesos ni defaults, su coste cae dentro de load_s, 45 tests nuevos. 1 minor: is_loaded ya es true durante el warm-up y una petición concurrente compartiría RNG, arreglo futuro con un lock de carga
 - 2026-10-07T16:48:59-05:00 · 1.4 cerrada: pass
+- 2026-10-07T16:49:40-05:00 · 1.G empieza en perf/qwen-task/1.G (base 335315e9)
+- 2026-10-07T16:50:01-05:00 · 1.G: verificación 1.G-a1 lanzada
