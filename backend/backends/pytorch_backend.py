@@ -5,10 +5,11 @@ PyTorch backend implementation for TTS and STT.
 from typing import Optional, List, Tuple
 import asyncio
 import logging
+import os
 import torch
 import numpy as np
 
-from ..utils import perf_log
+from ..utils import miopen_codec, perf_log
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,13 @@ class PyTorchTTSBackend:
         self._current_model_size = model_size
         self.model_size = model_size
         logger.info("TTS model %s loaded successfully", model_size)
+
+        if miopen_codec.codec_immediate_enabled(
+            self.device,
+            os.environ.get("VOICEBOX_BACKEND_VARIANT"),
+            getattr(torch.version, "hip", None),
+        ):
+            miopen_codec.use_immediate_mode_for_codec(self.model)
 
         if perf_log.is_enabled():
             perf_log.instrument_qwen_model(self.model)
