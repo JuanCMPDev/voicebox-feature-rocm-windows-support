@@ -5,10 +5,12 @@ entry point for development.
 """
 
 import argparse
+import os
 import uvicorn
 
 from .app import app  # noqa: F401 -- re-export for uvicorn "backend.main:app"
 from . import config, database
+from .utils.miopen_db import apply_miopen_db_defaults
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="voicebox backend server")
@@ -34,6 +36,16 @@ if __name__ == "__main__":
 
     if args.data_dir:
         config.set_data_dir(args.data_dir)
+
+    # ROCm: MIOpen's Find-Db and kernel cache in {data_dir}/cache/miopen, the same folder server.py picks for the
+    # packaged binary. VOICEBOX_BACKEND_VARIANT only exists there, so here torch.version.hip decides.
+    import torch  # lazy: already loaded by .app
+
+    apply_miopen_db_defaults(
+        config.get_data_dir(),
+        os.environ.get("VOICEBOX_BACKEND_VARIANT"),
+        hip=getattr(torch.version, "hip", None),
+    )
 
     database.init_db()
 

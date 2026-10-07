@@ -89,6 +89,16 @@ try:
     from backend import config
     logger.info("Importing backend.database...")
     from backend import database
+
+    # ROCm: MIOpen's Find-Db and kernel cache live in {data_dir}/cache/miopen. Set before backend.main imports
+    # torch, so --data-dir is read from sys.argv here (argparse runs further down, in __main__).
+    from backend.utils.miopen_db import apply_miopen_db_defaults, data_dir_from_argv
+
+    apply_miopen_db_defaults(
+        data_dir_from_argv(sys.argv[1:]) or config.get_data_dir(),
+        os.environ.get("VOICEBOX_BACKEND_VARIANT"),
+        hip=None,
+    )
     logger.info("Importing backend.main (this may take a while due to torch/transformers)...")
     from backend.main import app
     logger.info("Backend imports successful")
