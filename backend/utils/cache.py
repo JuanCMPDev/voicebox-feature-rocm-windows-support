@@ -67,9 +67,13 @@ def get_cached_voice_prompt(
             prompt = torch.load(cache_file, weights_only=True)
             _memory_cache[cache_key] = prompt
             return prompt
-        except Exception:
-            # Cache file corrupted, delete it
-            cache_file.unlink()
+        except Exception as e:
+            # Cache file corrupted or in a format weights_only cannot read: delete it, the caller recomputes
+            logger.warning("Discarding unreadable voice prompt cache %s: %s", cache_file.name, e)
+            try:
+                cache_file.unlink(missing_ok=True)
+            except OSError as unlink_error:
+                logger.warning("Failed to delete cache file %s: %s", cache_file, unlink_error)
 
     return None
 

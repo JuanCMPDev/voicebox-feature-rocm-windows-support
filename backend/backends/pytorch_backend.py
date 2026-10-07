@@ -2,7 +2,7 @@
 PyTorch backend implementation for TTS and STT.
 """
 
-from typing import Optional, List, Tuple
+from typing import Any, Optional, List, Tuple
 import asyncio
 import logging
 import os
@@ -24,6 +24,61 @@ from .base import (
 )
 from ..utils.cache import get_cache_key, get_cached_voice_prompt, cache_voice_prompt
 from ..utils.audio import load_audio
+
+# A Qwen voice prompt in the voice prompt cache (memory and disk) is the dict Qwen3TTSModel's
+# _prompt_items_to_voice_clone_prompt builds from create_voice_clone_prompt's items, plus each item's ref_text, with the
+# tensors on the CPU: only tensors, lists, bools, strings and None, so torch.load(weights_only=True) reads it back.
+# Reads rebuild the items, because generate_voice_clone only tokenizes ref_text (which ICL mode needs) for items.
+_PROMPT_CACHE_FIELDS = ("ref_code", "ref_spk_embedding", "x_vector_only_mode", "icl_mode", "ref_text")
+
+
+def _prompt_cache_key(model_size: str, audio_path: str, reference_text: str) -> str:
+    """Cache key of a voice prompt; the speaker embedding depends on the model, so each size has its own entry."""
+    return f"qwen_{model_size}_{get_cache_key(audio_path, reference_text)}"
+
+
+def _tensor_to(value: Any, device: Any, copy: bool = False) -> Any:
+    """``value`` moved to ``device`` if it is a tensor; anything else as is."""
+    if isinstance(value, torch.Tensor):
+        return value.detach().to(device, copy=copy)
+    return value
+
+
+def _voice_prompt_to_cache(model: Any, items: list) -> dict[str, list]:
+    """Cache entry for the items of ``model.create_voice_clone_prompt``: CPU copies of their tensors, values unchanged."""
+    prompt = model._prompt_items_to_voice_clone_prompt(items)
+    cached = {name: [_tensor_to(value, "cpu", copy=True) for value in values] for name, values in prompt.items()}
+    cached["ref_text"] = [item.ref_text for item in items]
+    return cached
+
+
+def _voice_prompt_from_cache(cached: Any, device: Any) -> list | None:
+    """Items of a cache entry written by :func:`_voice_prompt_to_cache`, tensors on ``device``; None for anything else.
+
+    Anything else is a miss: an entry from another format or backend is recomputed and overwritten, never returned.
+    """
+    if not isinstance(cached, dict) or not all(isinstance(cached.get(name), list) for name in _PROMPT_CACHE_FIELDS):
+        return None
+    columns = [cached[name] for name in _PROMPT_CACHE_FIELDS]
+    if len({len(column) for column in columns}) != 1 or not columns[0]:
+        return None
+    codes, embeddings = cached["ref_code"], cached["ref_spk_embedding"]
+    if not all(isinstance(code, torch.Tensor | None) for code in codes) or not all(
+        isinstance(embedding, torch.Tensor) for embedding in embeddings
+    ):
+        return None
+    from qwen_tts import VoiceClonePromptItem  # lazy: heavy import
+
+    return [
+        VoiceClonePromptItem(
+            ref_code=_tensor_to(code, device),
+            ref_spk_embedding=_tensor_to(embedding, device),
+            x_vector_only_mode=x_vector_only_mode,
+            icl_mode=icl_mode,
+            ref_text=ref_text,
+        )
+        for code, embedding, x_vector_only_mode, icl_mode, ref_text in zip(*columns, strict=True)
+    ]
 
 
 class PyTorchTTSBackend:
@@ -174,28 +229,20 @@ class PyTorchTTSBackend:
             use_cache: Whether to use cached prompt if available
 
         Returns:
-            Tuple of (voice_prompt_dict, was_cached)
+            Tuple of (voice_prompt, was_cached); voice_prompt is the list of
+            VoiceClonePromptItem that generate_voice_clone takes
         """
         await self.load_model_async(None)
 
         with perf_log.stage("reference") as perf_timer:
             # Check cache if enabled
+            cache_key = None
             if use_cache:
-                cache_key = get_cache_key(audio_path, reference_text)
-                cached_prompt = get_cached_voice_prompt(cache_key)
-                if cached_prompt is not None:
-                    # Cache stores as torch.Tensor but actual prompt is dict
-                    # Convert if needed
-                    if isinstance(cached_prompt, dict):
-                        # For PyTorch backend, the dict should contain tensors, not file paths
-                        # So we can safely return it
-                        perf_timer.fields["cached"] = True
-                        return cached_prompt, True
-                    elif isinstance(cached_prompt, torch.Tensor):
-                        # Legacy cache format - convert to dict
-                        # This shouldn't happen in practice, but handle it
-                        perf_timer.fields["cached"] = True
-                        return {"prompt": cached_prompt}, True
+                cache_key = _prompt_cache_key(self._current_model_size or self.model_size, audio_path, reference_text)
+                cached_items = _voice_prompt_from_cache(get_cached_voice_prompt(cache_key), self.device)
+                if cached_items is not None:
+                    perf_timer.fields["cached"] = True
+                    return cached_items, True
 
             def _create_prompt_sync():
                 """Run synchronous voice prompt creation in thread pool."""
@@ -213,9 +260,8 @@ class PyTorchTTSBackend:
             voice_prompt_items = await asyncio.to_thread(_create_prompt_sync)
 
             # Cache if enabled
-            if use_cache:
-                cache_key = get_cache_key(audio_path, reference_text)
-                cache_voice_prompt(cache_key, voice_prompt_items)
+            if cache_key is not None:
+                cache_voice_prompt(cache_key, _voice_prompt_to_cache(self.model, voice_prompt_items))
 
             perf_timer.fields["cached"] = False
             return voice_prompt_items, False
