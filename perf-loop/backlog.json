@@ -33,7 +33,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T16:59:30-05:00",
+    "updated_at": "2026-10-07T17:20:42-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1007,7 +1007,7 @@
           }
         ]
       },
-      "status": "awaiting_human",
+      "status": "blocked",
       "attempts": 1,
       "branch": "perf/qwen-task/1.G",
       "base": "335315e91c66d329145b0030bcb23ac36f45a6b0",
@@ -1016,11 +1016,16 @@
       "tags": [
         "1.G-a1"
       ],
-      "human": {
-        "kind": "approve",
-        "at": "2026-10-07T16:59:30-05:00",
-        "tag": "1.G-a1",
-        "message": "Métricas: hot_mean_s=12.623, warm_mean_s=12.841, cold_mean_s=11.955, rtf_hot_mean=2.352, rtf_warm_mean=2.440, talker_steps_per_s_mean=5.639, restart_overhead_s_mean=0.217, ufdb_lines_added_cold=24, ufdb_lines_added_warm=0, snr_prev_min=999.000, snr_anchor_min=45.252, spk_delta_anchor=0.000, wer_delta_anchor=0.000, dur_dev_anchor=0.000, speedup=-0.437, speedup_pass=hot, cold_warm_ratio=0.931. Revisa la rama perf/qwen-task/1.G, perf-loop/RESULTS.md y perf-loop/bench/1.G-a1/."
+      "notes": [
+        {
+          "at": "2026-10-07T17:00:36-05:00",
+          "text": "orquestador: criterios de la puerta OK pero hot 12.62 s vs 8.79 s de 1.4-a1 (-43.7 %). El talker cae de 8.2 a 5.6 pasos/s a mitad de la pasada cold (p05-p12) y sigue en ~5.7 en warm y hot tras reiniciar el proceso; mismo código que 1.4, la Find-Db no afecta al talker. Apunta a la GPU (térmica, energía u otro proceso), no al código. Conviene repetir el banco antes de aprobar"
+        }
+      ],
+      "result": {
+        "kind": "blocked",
+        "reason": "rechazada por el usuario: Banco degradado por el entorno: talker de 8,2 a 5,6 pasos/s a mitad de la pasada cold; repetir",
+        "at": "2026-10-07T17:20:42-05:00"
       }
     },
     {

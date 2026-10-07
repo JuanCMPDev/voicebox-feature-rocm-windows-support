@@ -68,3 +68,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T16:49:40-05:00 · 1.G empieza en perf/qwen-task/1.G (base 335315e9)
 - 2026-10-07T16:50:01-05:00 · 1.G: verificación 1.G-a1 lanzada
 - 2026-10-07T16:59:30-05:00 · 1.G espera decisión humana (approve)
+- 2026-10-07T17:00:36-05:00 · nota 1.G: orquestador: criterios de la puerta OK pero hot 12.62 s vs 8.79 s de 1.4-a1 (-43.7 %). El talker cae de 8.2 a 5.6 pasos/s a mitad de la pasada cold (p05-p12) y sigue en ~5.7 en warm y hot tras reiniciar el proceso; mismo código que 1.4, la Find-Db no afecta al talker. Apunta a la GPU (térmica, energía u otro proceso), no al código. Conviene repetir el banco antes de aprobar
+- 2026-10-07T17:20:42-05:00 · 1.G bloqueada: rechazada por el usuario: Banco degradado por el entorno: talker de 8,2 a 5,6 pasos/s a mitad de la pasada cold; repetir
