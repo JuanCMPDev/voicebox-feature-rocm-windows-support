@@ -13,13 +13,13 @@
     "phase_branches": {
       "0": "perf/qwen-f0"
     },
-    "current": null,
+    "current": "0.5",
     "anchor": null,
     "quality_ref": "0.4-a1",
     "perf_ref": "0.4-a1",
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-07T02:28:26-05:00"
+    "updated_at": "2026-10-07T02:29:11-05:00"
   },
   "phases": {
     "0": {
@@ -532,7 +532,13 @@
         "tag": "0.4-a1",
         "verdict": "pass",
         "by_human": false
-      }
+      },
+      "notes": [
+        {
+          "at": "2026-10-07T02:28:46-05:00",
+          "text": "review: approve — perf_log.py emite VBPERF por etapa (env, reference, talker, codec, normalize, effects, save, total) según contracts §4. Inerte sin VOICEBOX_PERF_LOG. No toca modelo, sampling, RNG ni el banco. bench_tts.py lo parsea tal cual. 30 tests nuevos, suite sin fallos nuevos, ruff igual que la base. 3 minors: ciclos de referencia en los envoltorios (la VRAM no se libera al descargar en modo perf), total.start() fuera del try (synchronize puede saltarse el finally), save incluye effects (documentado). Dato: hot p01 codec 6,5 s frente a 1-2 s del plan"
+        }
+      ]
     },
     {
       "id": "0.5",
@@ -573,8 +579,15 @@
           "compare_schema"
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/0.5",
+      "base": "7e0ca6a90860932a849d4374fc049fe6f2d475d4",
+      "started_at": "2026-10-07T02:29:06-05:00",
+      "last_tag": "0.5-a1",
+      "tags": [
+        "0.5-a1"
+      ]
     },
     {
       "id": "1.1",
