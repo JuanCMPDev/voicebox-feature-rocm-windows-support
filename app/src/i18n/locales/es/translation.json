@@ -654,6 +654,9 @@
       "applyEffects": "Aplicar efectos",
       "regenerate": "Regenerar"
     },
+    "status": {
+      "queued": "En cola…"
+    },
     "deleteDialog": {
       "title": "Eliminar generación",
       "body": "¿Seguro que quieres eliminar esta generación de \"{{name}}\"? Esta acción no se puede deshacer.",

@@ -465,7 +465,10 @@ export function HistoryTable() {
           >
             {history.map((gen) => {
               const isCurrentlyPlaying = currentAudioId === gen.id && isPlaying;
-              const isInProgress = gen.status === 'loading_model' || gen.status === 'generating';
+              const isInProgress =
+                gen.status === 'queued' ||
+                gen.status === 'loading_model' ||
+                gen.status === 'generating';
               const isGenerating = isInProgress;
               const isFailed = gen.status === 'failed';
               const isPlayable = !isGenerating && !isFailed;
@@ -545,7 +548,11 @@ export function HistoryTable() {
                       <div className="text-xs text-muted-foreground">
                         {isInProgress ? (
                           <span className="text-accent">
-                            {gen.status === 'loading_model' ? 'Loading model...' : 'Generating...'}
+                            {gen.status === 'queued'
+                              ? t('history.status.queued')
+                              : gen.status === 'loading_model'
+                                ? 'Loading model...'
+                                : 'Generating...'}
                           </span>
                         ) : (
                           formatDate(gen.created_at)

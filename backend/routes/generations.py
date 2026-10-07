@@ -98,7 +98,7 @@ async def generate_speech(
         db=db,
         instruct=data.instruct,
         generation_id=generation_id,
-        status="generating",
+        status="queued",
         engine=engine,
         model_size=model_size if engine_has_model_sizes(engine) else None,
         source=source,
@@ -155,7 +155,7 @@ async def retry_generation(generation_id: str, db: Session = Depends(get_db)):
     if (gen.status or "completed") != "failed":
         raise HTTPException(status_code=400, detail="Only failed generations can be retried")
 
-    gen.status = "generating"
+    gen.status = "queued"
     gen.error = None
     gen.audio_path = ""
     gen.duration = 0
@@ -199,7 +199,7 @@ async def regenerate_generation(generation_id: str, db: Session = Depends(get_db
     if (gen.status or "completed") != "completed":
         raise HTTPException(status_code=400, detail="Generation must be completed to regenerate")
 
-    gen.status = "generating"
+    gen.status = "queued"
     gen.error = None
     db.commit()
     db.refresh(gen)
@@ -239,7 +239,7 @@ async def cancel_generation(generation_id: str, db: Session = Depends(get_db)):
     if not gen:
         raise HTTPException(status_code=404, detail="Generation not found")
 
-    if (gen.status or "completed") not in ("loading_model", "generating"):
+    if (gen.status or "completed") not in ("queued", "loading_model", "generating"):
         raise HTTPException(status_code=400, detail="Only active generations can be cancelled")
 
     cancellation_state = cancel_generation_job(generation_id)

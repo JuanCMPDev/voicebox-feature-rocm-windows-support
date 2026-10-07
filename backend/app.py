@@ -294,7 +294,7 @@ async def _run_startup(application: FastAPI) -> None:
 
     init_queue()
 
-    # Mark stale "generating" records as failed -- leftovers from a killed process
+    # Mark stale queued/generating records as failed -- leftovers from a killed process
     from sqlalchemy import text as sa_text
 
     db = next(get_db())
@@ -303,7 +303,7 @@ async def _run_startup(application: FastAPI) -> None:
             sa_text(
                 "UPDATE generations SET status = 'failed', "
                 "error = 'Server was shut down during generation' "
-                "WHERE status IN ('generating', 'loading_model')"
+                "WHERE status IN ('queued', 'generating', 'loading_model')"
             )
         )
         if result.rowcount > 0:

@@ -33,7 +33,7 @@ async def speak(
     """Speak text in a voice profile. Mirrors voicebox.speak (MCP).
 
     Response shape matches POST /generate — a ``GenerationResponse`` with
-    ``status="generating"`` and an ``id`` the caller polls at
+    ``status="queued"`` and an ``id`` the caller polls at
     ``GET /generate/{id}/status``.
     """
     client_id = request.headers.get("X-Voicebox-Client-Id")

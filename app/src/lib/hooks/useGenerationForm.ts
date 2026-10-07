@@ -143,7 +143,7 @@ export function useGenerationForm(options: UseGenerationFormOptions = {}) {
       // Base Qwen3-TTS accepts the kwarg but ignores it.
       const supportsInstruct = engine === 'qwen_custom_voice';
       const effectsChain = options.getEffectsChain?.();
-      // This now returns immediately with status="generating"
+      // This now returns immediately with status="queued"
       const result = await generation.mutateAsync({
         profile_id: selectedProfileId,
         text: data.text,

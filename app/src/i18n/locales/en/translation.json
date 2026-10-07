@@ -654,6 +654,9 @@
       "applyEffects": "Apply Effects",
       "regenerate": "Regenerate"
     },
+    "status": {
+      "queued": "Queued…"
+    },
     "deleteDialog": {
       "title": "Delete Generation",
       "body": "Are you sure you want to delete this generation from \"{{name}}\"? This action cannot be undone.",

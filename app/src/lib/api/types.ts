@@ -110,7 +110,7 @@ export interface GenerationResponse {
   instruct?: string;
   engine?: string;
   model_size?: string;
-  status: 'loading_model' | 'generating' | 'completed' | 'failed';
+  status: 'queued' | 'loading_model' | 'generating' | 'completed' | 'failed';
   error?: string;
   is_favorited?: boolean;
   created_at: string;

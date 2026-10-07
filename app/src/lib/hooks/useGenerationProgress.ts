@@ -8,7 +8,7 @@ import { usePlayerStore } from '@/stores/playerStore';
 
 interface GenerationStatusEvent {
   id: string;
-  status: 'loading_model' | 'generating' | 'completed' | 'failed' | 'not_found';
+  status: 'queued' | 'loading_model' | 'generating' | 'completed' | 'failed' | 'not_found';
   duration?: number;
   error?: string;
   source?: string;

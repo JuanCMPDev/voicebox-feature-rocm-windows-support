@@ -1,6 +1,7 @@
 """
 Serial generation queue — ensures only one TTS inference runs at a time
-to avoid GPU contention.
+to avoid GPU contention. Transcriptions take turns with it through the
+same GPU lock.
 """
 
 import asyncio
@@ -27,6 +28,19 @@ _queued_generation_ids: set[str] = set()
 _running_generation_tasks: dict[str, asyncio.Task] = {}
 _cancelled_generation_ids: set[str] = set()
 
+# GPU turn shared by queued generations and /transcribe (/generate/stream bypasses the queue and does not take it).
+# asyncio.Lock wakes waiters in arrival order and acquire() never overtakes a waiter, so a transcription that arrives
+# during a generation runs right after it, ahead of the generations still queued: it waits for one generation at most.
+_gpu_lock: asyncio.Lock | None = None
+
+
+def gpu_lock() -> asyncio.Lock:
+    """Lock held by each queued generation and each transcription while it runs."""
+    global _gpu_lock
+    if _gpu_lock is None:
+        _gpu_lock = asyncio.Lock()
+    return _gpu_lock
+
 
 def create_background_task(coro) -> asyncio.Task:
     """Create a background task and prevent it from being garbage collected."""
@@ -41,19 +55,21 @@ async def _generation_worker():
     while True:
         job = await _generation_queue.get()
         try:
-            if job.generation_id in _cancelled_generation_ids:
-                _cancelled_generation_ids.discard(job.generation_id)
-                job.coro.close()
-                continue
+            # The job stays queued, and cancellable as such, until it gets the GPU.
+            async with gpu_lock():
+                if job.generation_id in _cancelled_generation_ids:
+                    _cancelled_generation_ids.discard(job.generation_id)
+                    job.coro.close()
+                    continue
 
-            task = asyncio.create_task(job.coro)
-            _running_generation_tasks[job.generation_id] = task
-            _queued_generation_ids.discard(job.generation_id)
-            try:
-                await task
-            except asyncio.CancelledError:
-                if not task.cancelled():
-                    raise
+                task = asyncio.create_task(job.coro)
+                _running_generation_tasks[job.generation_id] = task
+                _queued_generation_ids.discard(job.generation_id)
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    if not task.cancelled():
+                        raise
         except Exception:
             traceback.print_exc()
             await _force_fail_if_active(
@@ -79,7 +95,7 @@ async def _force_fail_if_active(generation_id: str, error: str) -> None:
             gen = db.query(DBGeneration).filter_by(id=generation_id).first()
             if gen is None:
                 return
-            if (gen.status or "completed") not in ("loading_model", "generating"):
+            if (gen.status or "completed") not in ("queued", "loading_model", "generating"):
                 return
             await history.update_generation_status(
                 generation_id=generation_id,
@@ -122,7 +138,7 @@ def init_queue(force: bool = False):
 
     Must be called once during application startup (inside a running event loop).
     """
-    global _generation_queue, _generation_worker_task
+    global _generation_queue, _generation_worker_task, _gpu_lock
     global _queued_generation_ids, _running_generation_tasks, _cancelled_generation_ids
 
     if _generation_worker_task is not None and not _generation_worker_task.done():
@@ -133,6 +149,7 @@ def init_queue(force: bool = False):
             task.cancel()
 
     _generation_queue = asyncio.Queue()
+    _gpu_lock = asyncio.Lock()
     _queued_generation_ids = set()
     _running_generation_tasks = {}
     _cancelled_generation_ids = set()

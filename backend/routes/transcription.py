@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from .. import models
 from ..services import transcribe
-from ..services.task_queue import create_background_task
+from ..services.task_queue import create_background_task, gpu_lock
 from ..utils.tasks import get_task_manager
 
 router = APIRouter()
@@ -76,7 +76,9 @@ async def transcribe_audio(
                 },
             )
 
-        text = await whisper_model.transcribe(tmp_path, language, model_size)
+        # Wait for the generation on the GPU, if any, instead of sharing the GPU with it; queued ones wait for us.
+        async with gpu_lock():
+            text = await whisper_model.transcribe(tmp_path, language, model_size)
 
         return models.TranscriptionResponse(
             text=text,
