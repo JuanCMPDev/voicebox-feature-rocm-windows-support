@@ -78,3 +78,6 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T17:37:41-05:00 · 2.3 cerrada: skip — Sin coste por longitud nueva tras 1.1 y 1.4 (reinicio 0,17 s)
 - 2026-10-07T17:37:49-05:00 · Fase 1 cerrada; empieza la fase 2: Hacer menos trabajo por frase
 - 2026-10-07T17:38:01-05:00 · Rama de fase perf/qwen-f2 creada desde perf/qwen-f1
+- 2026-10-07T17:38:02-05:00 · 2.1 empieza en perf/qwen-task/2.1 (base 7d1df541)
+- 2026-10-07T17:59:08-05:00 · nota 2.1: review: approve — caché guardada como dict+ref_text en CPU (legible con weights_only) y reconstruida como VoiceClonePromptItem en self.device; clave qwen_<size>_<md5>; 2 minor (ficheros .prompt antiguos huérfanos, anotación Tuple[dict,bool] desfasada)
+- 2026-10-07T17:59:08-05:00 · 2.1: verificación 2.1-a1 lanzada

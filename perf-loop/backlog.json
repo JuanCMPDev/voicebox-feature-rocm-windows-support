@@ -12,9 +12,10 @@
     "phase": 2,
     "phase_branches": {
       "0": "perf/qwen-f0",
-      "1": "perf/qwen-f1"
+      "1": "perf/qwen-f1",
+      "2": "perf/qwen-f2"
     },
-    "current": null,
+    "current": "2.1",
     "anchor": "0.5-a1",
     "quality_ref": "1.G-a2",
     "perf_ref": "1.G-a2",
@@ -33,7 +34,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T17:38:01-05:00",
+    "updated_at": "2026-10-07T17:59:08-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1081,8 +1082,21 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/2.1",
+      "base": "7d1df541628d0818c7ab61e0f08e87374734f820",
+      "started_at": "2026-10-07T17:38:02-05:00",
+      "notes": [
+        {
+          "at": "2026-10-07T17:59:08-05:00",
+          "text": "review: approve — caché guardada como dict+ref_text en CPU (legible con weights_only) y reconstruida como VoiceClonePromptItem en self.device; clave qwen_<size>_<md5>; 2 minor (ficheros .prompt antiguos huérfanos, anotación Tuple[dict,bool] desfasada)"
+        }
+      ],
+      "last_tag": "2.1-a1",
+      "tags": [
+        "2.1-a1"
+      ]
     },
     {
       "id": "2.4",
