@@ -36,8 +36,17 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 if (-not (Test-Path $py)) { throw "No encuentro $py (el junction backend\venv del worktree)." }
 if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw "No encuentro el CLI 'claude' en el PATH." }
 
+# perf-loop\STOP detiene el loop entre tareas. Lanzar el runner es la orden de seguir, así que lo quita.
+$stopFile = Join-Path $root "perf-loop\STOP"
+if (Test-Path $stopFile) {
+  Remove-Item -LiteralPath $stopFile -Force
+  Write-Host "Quité perf-loop\STOP de una parada anterior."
+}
+
 & $py $ctl doctor --quick
 if ($LASTEXITCODE -ne 0) { throw "loopctl doctor encontró fallos; corrígelos antes de lanzar el loop." }
+
+Write-Host "Para parar entre tareas sin cortar ninguna: New-Item perf-loop\STOP (desde otra terminal, en esta carpeta)."
 
 $fails = 0
 for ($i = 1; $i -le $MaxIterations; $i++) {

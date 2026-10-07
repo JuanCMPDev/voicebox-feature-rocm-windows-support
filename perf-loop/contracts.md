@@ -27,7 +27,7 @@ Rutas relativas a la raíz del worktree. `<python>` es `backend/venv/Scripts/pyt
 ```
 <python> scripts/bench_tts.py --config perf-loop/config.json --tag <tag> --out perf-loop/bench/<tag>
     [--phrases all | p01,p02,…]   # por defecto all
-    [--passes cold,warm]          # orden de ejecución; por defecto cold,warm
+    [--passes cold,warm,hot]      # orden de ejecución; por defecto cold,warm (valores: cold, warm, hot)
     [--miopen-db fresh|persist]   # por defecto persist
     [--env KEY=VALUE]…            # variables extra para el servidor (repetible)
     [--scenario contention|batch] [--concurrent N]
@@ -42,7 +42,9 @@ Código de salida 0 solo si todas las frases terminaron en `completed`. Cualquie
 
 1. **Comprobaciones previas**: si `config.bench.port` está ocupado, aborta. Si `config.bench.user_app_port` (la app del usuario) responde, avisa en el log y sigue.
 2. **Datos del banco**: `config.bench.data_dir` (relativo al worktree). Si no existe, créalo copiando de `config.bench.source_data_dir` la base `voicebox.db` y lo necesario del perfil `config.bench.profile_id` (sus muestras). Nunca escribas en `source_data_dir`. La caché del prompt de voz y la Find-Db propia (desde la 1.2) viven aquí y persisten entre ejecuciones.
-3. **Una pasada = un proceso de servidor nuevo**: `<python> -m backend.main --port <port> --data-dir <data_dir>` con cwd en la raíz del worktree, entorno heredado + `config.bench.env` + `--env`, y en Windows `creationflags=CREATE_NO_WINDOW`. Captura stdout+stderr a `<out>/logs/server-<pasada>.log`. Espera a `/health` (máx. `config.bench.server_start_timeout_s`, por defecto 600 s), mide `load_s` hasta que el modelo esté cargado (incluido el calentamiento si existe) y ejecuta las frases **en serie** en el orden del archivo. Al final, apaga el servidor (terminación ordenada y, si no, árbol de procesos) y espera a que libere el puerto.
+3. **Una pasada = un proceso de servidor nuevo, salvo `hot`**: `<python> -m backend.main --port <port> --data-dir <data_dir>` con cwd en la raíz del worktree, entorno heredado + `config.bench.env` + `--env`, y en Windows `creationflags=CREATE_NO_WINDOW`. Captura stdout+stderr a `<out>/logs/server-<pasada>.log`. Espera a `/health` (máx. `config.bench.server_start_timeout_s`, por defecto 600 s), mide `load_s` hasta que el modelo esté cargado (incluido el calentamiento si existe) y ejecuta las frases **en serie** en el orden del archivo. Al final, apaga el servidor (terminación ordenada y, si no, árbol de procesos) y espera a que libere el puerto.
+   - **`hot`** no arranca servidor: reutiliza el proceso de la pasada inmediatamente anterior (que no se apaga hasta terminar `hot`), sin recargar el modelo, y repite las mismas frases en el mismo orden. Cada frase es entonces una «longitud ya vista» en ese proceso: el caso de 16,5 s del plan. `hot` no puede ser la primera pasada; su log sigue en `server-<pasada anterior>.log`.
+   - Qué mide cada una: **cold**, primera vez (con `--miopen-db fresh`, incluye el Find de cada longitud); **warm**, proceso nuevo con la Find-Db ya poblada, es decir, lo que se paga tras reiniciar la app; **hot**, régimen estable. `cold − warm` aísla el Find (fase 1); `warm − hot` es el coste de reinicio por longitud, que la 0.2 midió en ~50 s por frase sin líneas nuevas en la ufdb; las mejoras de cómputo (fase 3) se miden en `hot`.
 4. **Cada frase**: `POST /generate` con el texto, `profile_id`, `engine: "qwen"`, `model_size: "1.7B"`, `language: "es"` y su `seed` (comprueba los nombres reales de los campos en `backend/models.py`). Espera a `completed` sondeando el estado, descarga el WAV y guárdalo en `<out>/<pasada>/<id>.wav`. `wall_s` va desde el POST hasta `completed`.
 5. **MIOpen**:
    - `fresh`: crea un directorio vacío `<out>/miopen-db/` y pasa `MIOPEN_USER_DB_PATH` y `MIOPEN_CUSTOM_CACHE_DIR` apuntando a él (la app usa `setdefault`, así que esto manda). Sirve para medir el coste real de cada longitud nueva.
@@ -50,7 +52,7 @@ Código de salida 0 solo si todas las frases terminaron en `completed`. Cualquie
    - La Find-Db efectiva es la que diga la línea `VBPERF stage=env` (`miopen_user_db_path`); si aún no existe esa línea, usa la regla anterior. Cuenta las líneas de todos los `*.ufdb.txt` de esa carpeta justo cuando el servidor está listo (tras el calentamiento) y al terminar cada pasada.
 6. **Escenarios** (después de las pasadas):
    - `contention`: con el servidor de la última pasada, lanza a la vez 2 generaciones de la frase más larga y un `POST /transcribe` del audio de referencia del perfil. Registra `transcribe_wait_s` (de la petición a la respuesta) y `generation_s_max`.
-   - `batch`: encola a la vez `--concurrent N` frases distintas del mismo perfil, mide el tiempo total hasta que todas terminan y compáralo con la suma de sus `wall_s` individuales de la pasada warm: `throughput_gain = suma_individual / total_en_lote`.
+   - `batch`: con el servidor de la última pasada, encola a la vez `--concurrent N` frases distintas del mismo perfil, mide el tiempo total hasta que todas terminan y compáralo con la suma de sus `wall_s` individuales de la pasada **hot** (mismo proceso, longitudes ya vistas: así el lote no sale ganando por comparar contra un proceso recién arrancado): `throughput_gain = suma_individual / total_en_lote`. Si no hay pasada hot, usa warm. Registra cuál en `ref_pass`.
 
 ### `<out>/bench.json`
 
@@ -62,9 +64,10 @@ Código de salida 0 solo si todas las frases terminaron en `completed`. Cualquie
   "dirty": false,
   "code_path": "<directorio de backend/ que importó el servidor, según VBPERF env o, si no, el del worktree>",
   "started_at": "2026-10-07T10:00:00-05:00",
-  "args": {"phrases": ["p01", "p02"], "passes": ["cold", "warm"], "miopen_db": "fresh", "env": {}, "scenario": null},
+  "args": {"phrases": ["p01", "p02"], "passes": ["cold", "warm", "hot"], "miopen_db": "fresh", "env": {}, "scenario": null},
   "env_checks": {"…": "payload de la línea VBPERF stage=env, o null"},
-  "server": {"cold": {"load_s": 41.2}, "warm": {"load_s": 12.0}},
+  "server": {"cold": {"load_s": 41.2, "pid": 1234}, "warm": {"load_s": 12.0, "pid": 5678},
+             "hot": {"load_s": null, "pid": 5678, "same_process_as": "warm"}},
   "passes": [
     {
       "name": "cold",
@@ -85,24 +88,29 @@ Código de salida 0 solo si todas las frases terminaron en `completed`. Cualquie
         }
       ]
     },
-    {"name": "warm", "…": "…"}
+    {"name": "warm", "…": "…"},
+    {"name": "hot", "…": "…"}
   ],
   "scenarios": {
     "contention": {"transcribe_wait_s": 9.8, "generation_s_max": 16.1},
-    "batch": {"n": 4, "total_s": 31.0, "sum_individual_s": 64.0, "throughput_gain": 2.06}
+    "batch": {"n": 4, "total_s": 31.0, "sum_individual_s": 64.0, "throughput_gain": 2.06, "ref_pass": "hot"}
   },
   "summary": {
-    "warm_mean_s": 16.4, "warm_median_s": 16.1, "cold_mean_s": 150.2,
-    "rtf_warm_mean": 2.7, "talker_steps_per_s_mean": 4.6,
-    "ufdb_lines_added_cold": 37, "ufdb_lines_added_warm": 0, "ufdb_lines_total": 37,
+    "hot_mean_s": 16.4, "hot_median_s": 16.1, "rtf_hot_mean": 2.7,
+    "warm_mean_s": 66.0, "warm_median_s": 65.1, "cold_mean_s": 150.2, "rtf_warm_mean": 10.9,
+    "talker_steps_per_s_mean": 4.6, "talker_steps_per_s_mean_hot": 4.7,
+    "ufdb_lines_added_cold": 37, "ufdb_lines_added_warm": 0, "ufdb_lines_added_hot": 0, "ufdb_lines_total": 37,
     "stage_ms_mean": {"reference": 1800.0, "talker": 13000.0, "codec": 1500.0},
+    "stage_ms_mean_hot": {"reference": 1750.0, "talker": 12800.0, "codec": 1450.0},
     "load_s": 41.2, "phrases_n": 12
   }
 }
 ```
 
 - `steps = round(audio_s × 12.5)` si el servidor no los da; `rtf = wall_s / audio_s`.
-- `stage_ms_mean` y `talker_steps_per_s_mean` se calculan sobre la pasada **warm** (si no la hay, sobre la última).
+- `server.<pasada>.pid` es el PID del proceso del servidor en cada pasada; en `hot` es el mismo que en la pasada anterior (loopctl lo comprueba) y `same_process_as` nombra esa pasada.
+- `stage_ms_mean` y `talker_steps_per_s_mean` se calculan sobre la pasada **warm** (si no la hay, sobre la última): así la 2.1 comprueba la caché del prompt en disco tras un reinicio. `stage_ms_mean_hot` y `talker_steps_per_s_mean_hot`, igual sobre la pasada **hot** (`null` si no la hay).
+- `<pasada>_mean_s`, `<pasada>_median_s` y `rtf_<pasada>_mean` para cada pasada medida; `null` si no se midió.
 - `ufdb_lines_added_<pasada> = ufdb_lines_after − ufdb_lines_before` de esa pasada; `ufdb_lines_total` es el recuento al terminar.
 - Campos sin dato: `null`, nunca omitidos. `stages` puede ir vacío hasta la tarea 0.4.
 

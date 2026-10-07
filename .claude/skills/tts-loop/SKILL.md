@@ -1,7 +1,7 @@
 ---
 name: tts-loop
 description: Orquesta el loop agéntico que aplica el plan de velocidad de Qwen3-TTS (fases 0–4) en ramas locales, con banco, puertas de calidad, revisión independiente y decisiones humanas. Solo se invoca a mano con /tts-loop.
-argument-hint: "[init | run [N] | next | status | approve <id> [nota] | reject <id> <motivo> | ab <id> [código] | retry <id> | skip <id> <motivo> | refreeze <motivo> | pause | export | teardown]"
+argument-hint: "[init | run [N] | next | status | approve <id> [nota] | reject <id> <motivo> | ab <id> [código] | retry <id> | reopen <id> <motivo> | skip <id> <motivo> | refreeze <motivo> | pause | export | teardown]"
 disable-model-invocation: true
 allowed-tools: Bash(backend/venv/Scripts/python.exe .claude/skills/tts-loop/loopctl.py *), Agent, Read, Grep, Glob, AskUserQuestion
 ---
@@ -20,7 +20,7 @@ En adelante, `loopctl` = `backend/venv/Scripts/python.exe .claude/skills/tts-loo
 
 1. **Orquestas; no escribes código.** El código lo escribe el subagente `tts-implementer`; la revisión, `tts-reviewer`, en contexto limpio; ramas, estado, banco, comparación de audio y puertas, `loopctl`. No tomes atajos aunque parezcan obvios.
 2. **Una tarea cada vez**, en el orden que da `loopctl next`. Ninguna se cierra sin una puerta evaluada por `loopctl verify`.
-3. **Las decisiones humanas son del usuario.** No ejecutes approve, reject, ab, skip, retry ni refreeze por iniciativa propia: loopctl las rechaza si no las escribió él en su mensaje. Si te las pide en lenguaje natural, dile el comando exacto (`/tts-loop approve 0.5`).
+3. **Las decisiones humanas son del usuario.** No ejecutes approve, reject, ab, skip, retry, reopen ni refreeze por iniciativa propia: loopctl las rechaza si no las escribió él en su mensaje. Si te las pide en lenguaje natural, dile el comando exacto (`/tts-loop approve 0.5`).
 4. **No toques `perf-loop/` ni `.claude/`** salvo con `loopctl note`. Si un hook te bloquea, no lo rodees: cambia de enfoque o bloquea la tarea con su motivo.
 5. **Esperas largas**: `loopctl wait` con timeout 600000 en Bash, repetido mientras imprima `ESTADO: running`. Entre llamadas no hagas otra cosa.
 6. Contesta al usuario en español y breve: qué tarea, qué pasó, qué número importa, qué decide él si toca.
@@ -38,18 +38,19 @@ En adelante, `loopctl` = `backend/venv/Scripts/python.exe .claude/skills/tts-loo
 | `ab <id>` | `loopctl ab <id>` y explica cómo usar la página de escucha ciega. |
 | `ab <id> <código>` | `loopctl ab <id> <código>` |
 | `retry <id>` | `loopctl retry <id>` |
+| `reopen <id> <motivo>` | `loopctl reopen <id> --reason "<motivo>"` (rehace una tarea ya superada de la fase en curso; el motivo es la instrucción del nuevo intento) |
 | `skip <id> <motivo>` | `loopctl skip <id> --reason "<motivo>"` |
 | `refreeze <motivo>` | `loopctl refreeze --reason "<motivo>"` |
 | `pause` | `loopctl pause` y resume dónde quedó. |
 | `export` | `loopctl export` y explica la rama resultante. |
 | `teardown` | Solo desde el repo principal y solo si el usuario lo pidió: confirma con AskUserQuestion que quiere borrar el worktree (y sus WAV) y ejecuta `loopctl teardown --yes`. Nunca `git worktree remove` a mano: en Windows seguiría el junction y borraría el venv del repo principal. |
 
-Tras un approve, ab, retry o skip que salga bien, pregunta si sigue con `run`.
+Tras un approve, ab, retry, reopen o skip que salga bien, pregunta si sigue con `run`.
 
 ## Iteración
 
 1. **Orientarse.** `loopctl doctor --quick`: si hay líneas `FAIL`, para y explícalas. Después `loopctl next --json`.
-   - `"stop": true` → cuenta al usuario el `message` (qué tiene que decidir y con qué comando) y termina.
+   - `"stop": true` → cuenta al usuario el `message` (qué tiene que decidir y con qué comando) y termina. Con `reason: "stop_file"` el usuario pidió parar entre tareas (existe `perf-loop/STOP`): no lo borres tú.
 2. **Según `action`:**
    - `begin` → `loopctl begin <id>` y continúa con su `next_action`.
    - `implement` → paso 3 · `verify` → paso 4 (revisión, si la tarea tiene implementador) y luego 5 · `wait` o `decide` → paso 6 (imprime el veredicto) y 7.
@@ -66,8 +67,8 @@ Tras un approve, ab, retry o skip que salga bien, pregunta si sigue con `run`.
 7. **Decidir** según el veredicto impreso:
    - `PASS` → `loopctl finish <id> pass`.
    - `NEEDS_HUMAN` → `loopctl await <id>`. Explica al usuario qué mirar (la página A/B, la rama o las métricas) y el comando exacto. Termina.
-   - `FAIL` → `loopctl note <id> "<causa en una frase>"`. Si quedan intentos y la causa se corrige en código, vuelve a 3 con los fallos literales. Si no: experimento o medida → `loopctl finish <id> reject --reason "<causa>"`; tarea obligatoria → `loopctl block <id> --reason "<causa>"` y termina.
-8. **Cierre.** Al usuario, 2–3 líneas: tarea, veredicto y la cifra clave (warm medio, speedup o SNR). En modo `run`, siguiente iteración.
+   - `FAIL` → `loopctl note <id> "<causa en una frase>"`. Si quedan intentos y la causa se corrige en código, vuelve a 3 con los fallos literales. Si no: experimento o medida → `loopctl finish <id> reject --reason "<causa>"` (salvo la tarea que registra los tests de partida: esa se bloquea); tarea obligatoria → `loopctl block <id> --reason "<causa>"` y termina.
+8. **Cierre.** Al usuario, 2–3 líneas: tarea, veredicto y la cifra clave (hot medio, speedup o SNR). En modo `run`, siguiente iteración.
 
 Si el usuario pide parar a mitad de tarea: `loopctl pause` y termina.
 

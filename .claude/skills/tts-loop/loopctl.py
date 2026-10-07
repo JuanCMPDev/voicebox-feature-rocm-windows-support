@@ -36,7 +36,7 @@ import traceback
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-VERSION = "1.0"
+VERSION = "1.1"
 IS_WIN = os.name == "nt"
 SKILL_DIR = Path(__file__).resolve().parent
 LOOP = "perf-loop"
@@ -44,6 +44,19 @@ STATE_REL = f"{LOOP}/backlog.json"
 CONFIG_REL = f"{LOOP}/config.json"
 TOKEN_REL = f"{LOOP}/.human-token.json"
 MARKER_REL = f"{LOOP}/.iteration"
+STOP_REL = f"{LOOP}/STOP"  # si existe, `next` se detiene antes de la siguiente iteración
+TESTS_BASELINE_REL = f"{LOOP}/tests-baseline.json"
+# Códigos de salida de pytest con resultados completos: 0 (todo pasa) y 1 (algún test falla).
+# 2 = interrumpido (p. ej. un error al recoger un módulo), 3 = error interno, 4 = uso, 5 = ningún test.
+PYTEST_COMPLETE_RC = (0, 1)
+PYTEST_RC_WHY = {
+    2: "pytest se interrumpió (casi siempre, un error al importar o recoger un módulo de test)",
+    3: "error interno de pytest",
+    4: "error de uso de pytest (revisa tests.command en config.json)",
+    5: "pytest no encontró ningún test",
+    124: "los tests superaron el tiempo límite (tests.timeout_s)",
+    127: "no se pudo lanzar el comando de tests",
+}
 MANAGED_FILES = [
     f"{LOOP}/backlog.json",
     f"{LOOP}/progress.md",
@@ -63,6 +76,7 @@ PROTECTED = MANAGED_FILES + [
     f"{LOOP}/.gitignore",
     TOKEN_REL,
     MARKER_REL,
+    STOP_REL,
 ]
 PROTECTED_PREFIXES = [".claude/", f"{LOOP}/bench/", f"{LOOP}/logs/", "backend/venv/"]
 SUBAGENT_LOOPCTL_OK = {"show", "status", "brief", "next", "doctor", "note", "profiles"}
@@ -311,9 +325,13 @@ def untracked_outside(root):
 
 
 def code_changed_since(root, commit):
+    return code_changed_since_ref(root, commit, "HEAD")
+
+
+def code_changed_since_ref(root, commit, ref):
     if not commit:
         return []
-    out = git(root, "diff", "--name-only", commit, "HEAD", "--", ".", f":(exclude){LOOP}", check=False)
+    out = git(root, "diff", "--name-only", commit, ref, "--", ".", f":(exclude){LOOP}", check=False)
     return [x for x in out.splitlines() if x.strip()]
 
 
@@ -543,7 +561,27 @@ def resume_action(ctx, t):
     return "implement" if t.get("implementer", True) else "verify"
 
 
-def select(ctx):
+def stop_file_sel(ctx):
+    if not (ctx.root / STOP_REL).exists():
+        return None
+    cur = ctx.loop.get("current")
+    extra = f" La tarea {cur} queda como está y se retomará al seguir." if cur else ""
+    return stop("stop_file", "Hay un archivo perf-loop/STOP: el loop se detiene antes de la siguiente iteración."
+                + extra + " Bórralo para seguir (run-loop.ps1 lo quita solo al arrancar).", cur)
+
+
+def select(ctx, honor_stop=True):
+    stopping = honor_stop and (ctx.root / STOP_REL).exists()
+    sel = _select(ctx, mark=not stopping)
+    if not stopping:
+        return sel
+    if sel.get("stop"):  # una parada que pide algo al usuario no se tapa con la del archivo STOP
+        sel["message"] += " (Además hay un perf-loop/STOP: bórralo cuando quieras seguir.)"
+        return sel
+    return stop_file_sel(ctx)
+
+
+def _select(ctx, mark=True):
     L = ctx.loop
     if L.get("done"):
         return stop("done", "Backlog completado. `loopctl export` saca una rama limpia sin el andamiaje del loop.")
@@ -553,7 +591,8 @@ def select(ctx):
         if t["status"] in STOPPING:
             return stop(t["status"], human_message(ctx, t), cur)
         if t["status"] == "in_progress":
-            set_marker(ctx, cur)
+            if mark:
+                set_marker(ctx, cur)
             return {"stop": False, "task": cur, "action": resume_action(ctx, t), "title": t["title"]}
         L["current"] = None
     for t in ctx.tasks:
@@ -754,6 +793,27 @@ def parse_junit(path, rc):
     return res
 
 
+def test_modules_changed(ctx, since):
+    """Nombres (sin .py) de los archivos de test añadidos o cambiados desde `since` hasta HEAD."""
+    if not since:
+        return set()
+    out = git(ctx.root, "diff", "--name-only", "--diff-filter=AMR", since, "HEAD", "--", ".", f":(exclude){LOOP}",
+              check=False)
+    stems = set()
+    for x in out.splitlines():
+        name = x.strip().rsplit("/", 1)[-1]
+        if name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py")):
+            stems.add(name[:-3])
+    return stems
+
+
+def tests_in_modules(ids, stems):
+    """Ids de junit (p. ej. «backend.tests.test_x::test_y» o «::tests.test_x») que pertenecen a esos módulos."""
+    if not stems:
+        return []
+    return [i for i in ids if stems & set(re.split(r"[.:/\\]+", i))]
+
+
 LINT_LINE = re.compile(r"^\S.*:\d+:\d+: [A-Z]+\d+")
 
 
@@ -861,23 +921,34 @@ def phrase_times(bench, pass_name):
     return {}
 
 
+SPEEDUP_PASSES = ("hot", "warm")  # el speedup se mide en régimen estable (hot) si ambas mediciones lo tienen
+
+
 def derived_metrics(bench, ref):
     d = {}
     if not bench:
         return d
-    warm, cold = phrase_times(bench, "warm"), phrase_times(bench, "cold")
+    warm, cold, hot = phrase_times(bench, "warm"), phrase_times(bench, "cold"), phrase_times(bench, "hot")
+    # cold y warm son procesos nuevos: su diferencia aísla el Find de MIOpen (fase 1).
     common = sorted(set(warm) & set(cold))
     if common:
         sw = sum(warm[i] for i in common)
         sc = sum(cold[i] for i in common)
         d["cold_warm_ratio"] = sc / sw if sw else None
         d["find_overhead_s_mean"] = (sc - sw) / len(common)
+    # warm (proceso nuevo, Find-Db ya poblada) frente a hot (mismo proceso): lo que cuesta un reinicio.
+    c_wh = sorted(set(warm) & set(hot))
+    if c_wh:
+        d["restart_overhead_s_mean"] = sum(warm[i] - hot[i] for i in c_wh) / len(c_wh)
     if ref:
-        rw = phrase_times(ref, "warm")
-        c2 = sorted(set(warm) & set(rw))
-        if c2 and sum(rw[i] for i in c2) > 0:
-            d["speedup"] = 1 - sum(warm[i] for i in c2) / sum(rw[i] for i in c2)
-            d["speedup_n"] = len(c2)
+        for pname in SPEEDUP_PASSES:
+            cur, rp = phrase_times(bench, pname), phrase_times(ref, pname)
+            c2 = sorted(set(cur) & set(rp))
+            if c2 and sum(rp[i] for i in c2) > 0:
+                d["speedup"] = 1 - sum(cur[i] for i in c2) / sum(rp[i] for i in c2)
+                d["speedup_n"] = len(c2)
+                d["speedup_pass"] = pname
+                break
     sc_ = bench.get("scenarios") or {}
     con = sc_.get("contention") or {}
     if con.get("transcribe_wait_s") is not None and con.get("generation_s_max"):
@@ -888,7 +959,7 @@ def derived_metrics(bench, ref):
     return d
 
 
-def validate_bench(ctx, b, tag, bd):
+def validate_bench(ctx, b, tag, bd, want_passes=None):
     errs = []
     if b.get("schema") != "vb-bench/1":
         errs.append("bench.json: 'schema' debe ser 'vb-bench/1'")
@@ -897,6 +968,22 @@ def validate_bench(ctx, b, tag, bd):
     for k in ("commit", "dirty", "code_path", "passes", "summary"):
         if k not in b:
             errs.append(f"bench.json: falta '{k}'")
+    names = [p.get("name") for p in b.get("passes") or []]
+    for w in want_passes or []:
+        if w not in names:
+            errs.append(f"bench.json: falta la pasada {w} (se pidió --passes {','.join(want_passes)})")
+    if "hot" in names:
+        i = names.index("hot")
+        srv = b.get("server") or {}
+        h = srv.get("hot") or {}
+        if i == 0:
+            errs.append("bench.json: la pasada hot no puede ser la primera (reutiliza el proceso de la anterior)")
+        elif h.get("same_process_as") != names[i - 1]:
+            errs.append(f"bench.json: server.hot.same_process_as debe ser {names[i - 1]!r}")
+        elif h.get("pid") is None or h.get("pid") != (srv.get(names[i - 1]) or {}).get("pid"):
+            errs.append("bench.json: la pasada hot no corrió en el mismo proceso que la anterior (server.<pasada>.pid)")
+        if (b.get("summary") or {}).get("hot_mean_s") is None:
+            errs.append("bench.json: falta summary.hot_mean_s")
     if b.get("dirty"):
         errs.append("bench.json: se midió con el árbol de trabajo sucio")
     cp = b.get("code_path")
@@ -917,15 +1004,15 @@ def validate_bench(ctx, b, tag, bd):
 def validate_stages(bench):
     errs = []
     for p in (bench or {}).get("passes", []) or []:
-        if p.get("name") != "warm":
+        if p.get("name") not in ("warm", "hot"):
             continue
         for x in p.get("phrases") or []:
             stg = x.get("stages") or {}
             for k in ("reference", "talker", "codec"):
                 if not isinstance((stg.get(k) or {}).get("ms"), (int, float)):
-                    errs.append(f"{x.get('id')}: falta stages.{k}.ms")
+                    errs.append(f"{p.get('name')}/{x.get('id')}: falta stages.{k}.ms")
             if not isinstance((stg.get("talker") or {}).get("steps_per_s"), (int, float)):
-                errs.append(f"{x.get('id')}: falta stages.talker.steps_per_s")
+                errs.append(f"{p.get('name')}/{x.get('id')}: falta stages.talker.steps_per_s")
     if not (bench or {}).get("env_checks"):
         errs.append("bench.json: falta env_checks (línea VBPERF stage=env)")
     return errs[:20]
@@ -1056,7 +1143,7 @@ def evaluate_gate(ctx, t, tag, st):
             if not any(s["name"] == "bench" and s.get("rc") not in (0, None) for s in steps):
                 fails.append("el banco no escribió bench.json")
         else:
-            fails += validate_bench(ctx, bench, tag, bd)
+            fails += validate_bench(ctx, bench, tag, bd, want_passes=g["bench"].get("passes"))
             bc = str(bench.get("commit", ""))
             if bc and not str(st.get("commit", "")).startswith(bc[:12]):
                 fails.append(f"bench.json dice commit {bc[:10]} pero se lanzó en {str(st.get('commit'))[:10]}")
@@ -1117,20 +1204,52 @@ def evaluate_gate(ctx, t, tag, st):
     tests_info = None
     if g.get("tests"):
         tj = read_json(bd / "tests.json")
-        if not tj or tj.get("missing"):
+        rc = (tj or {}).get("rc")
+        if not tj:
+            fails.append("no hay resultados de tests (junit.xml); mira logs/tests.log")
+        elif rc is not None and rc not in PYTEST_COMPLETE_RC:
+            # Un pytest interrumpido deja un junit.xml con el error de colección como único «fallo»: si lo
+            # diéramos por bueno, la regla «ningún test nuevo fallando» no comprobaría nada.
+            why = PYTEST_RC_WHY.get(rc, f"pytest terminó con código {rc}")
+            tests_info = {"passed": tj.get("passed"), "failed": len(tj.get("failed", [])), "rc": rc,
+                          "incomplete": True}
+            culprits = ", ".join(tj.get("failed", [])[:3]) or "ver el log"
+            if g["tests"] == "record":
+                hint = ("el usuario decide cómo corregir tests.command en config.json (p. ej. --ignore del módulo "
+                        "roto) y vuelve a lanzar la tarea")
+            else:
+                hint = ("si el módulo lo añadió o tocó esta tarea, arréglalo; si ya fallaba antes, bloquea la tarea "
+                        "para que el usuario corrija tests.command")
+            fails.append(f"la batería de tests no terminó: {why} ({culprits}); {tj.get('passed', 0)} tests pasaron. "
+                         f"Mira logs/tests.log: {hint}")
+        elif tj.get("missing"):
             fails.append("no hay resultados de tests (junit.xml); mira logs/tests.log")
         elif g["tests"] == "record":
             tests_info = {"passed": tj.get("passed"), "failed": len(tj.get("failed", [])), "record": True}
             if tj.get("failed"):
-                warns.append(f"{len(tj['failed'])} tests ya fallan en el código de partida; quedan como referencia")
-            if not tj.get("passed") and not tj.get("failed"):
-                fails.append("la batería de tests no ejecutó ningún test; revisa tests.command en config.json")
+                warns.append(f"{len(tj['failed'])} tests ya fallan en el código de partida; quedan como referencia: "
+                             f"{', '.join(tj['failed'][:5])}")
+                mine = tests_in_modules(tj["failed"], test_modules_changed(ctx, L.get("scaffold_commit")))
+                if mine:
+                    warns.append(f"ojo: {len(mine)} de esos fallos están en tests que añadió o cambió el loop "
+                                 f"({', '.join(mine[:5])}); las tareas que vuelvan a tocar esos archivos tendrán que "
+                                 "dejarlos pasando")
+            if not tj.get("passed"):
+                fails.append("la batería de tests no tiene ningún test que pase: una lista de partida así no "
+                             "protege nada; revisa tests.command en config.json")
         else:
-            bl = read_json(ctx.root / LOOP / "tests-baseline.json")
+            bl = read_json(ctx.root / TESTS_BASELINE_REL)
             if bl is None:
                 warns.append("no hay perf-loop/tests-baseline.json: cualquier fallo cuenta como nuevo")
+            elif bl.get("stale"):
+                rt = next((x["id"] for x in ctx.tasks if (x.get("gate") or {}).get("tests") == "record"), "0.0")
+                fails.append("la lista de tests de partida está pendiente de registrarse de nuevo "
+                             f"({bl.get('stale_reason', 'tarea de tests reabierta')}): hace falta cerrar antes la "
+                             f"{rt} (`/tts-loop retry {rt}` si está bloqueada; `/tts-loop reopen {rt}` si se omitió)")
             base = set((bl or {}).get("failed", []))
-            new = [x for x in tj.get("failed", []) if x not in base]
+            # Un test que ya fallaba deja de contar como «de partida» si esta tarea toca su archivo.
+            touched = tests_in_modules(tj.get("failed", []), test_modules_changed(ctx, t.get("base")))
+            new = [x for x in tj.get("failed", []) if x not in base or x in touched]
             gone = sorted(set((bl or {}).get("passed_ids", [])) - set(tj.get("passed_ids", [])) - set(tj.get("failed", [])))
             tests_info = {"passed": tj.get("passed"), "failed": len(tj.get("failed", [])), "new_failures": new,
                           "no_longer_run": gone}
@@ -1155,10 +1274,17 @@ def evaluate_gate(ctx, t, tag, st):
     if t.get("quality_type") == 3 and snr_prev is not None and snr_prev >= CAP_SNR:
         fails.append("cambio de tipo 3 pero la onda salió idéntica: ¿se está midiendo el código nuevo?")
     sp_ = data["derived"].get("speedup")
-    noise = (L.get("noise") or {}).get("warm_rel_diff")
+    sp_pass = data["derived"].get("speedup_pass") or "warm"
+    nz = L.get("noise") or {}
+    noise = nz.get(f"{sp_pass}_rel_diff", nz.get("warm_rel_diff"))
     factor = float(ctx.config.get("noise", {}).get("speedup_factor", 2.0))
-    if sp_ is not None and noise and abs(sp_) < factor * noise and any("speedup" in c["metric"] for c in defs):
-        warns.append(f"speedup {sp_:.3f} dentro de {factor}× el ruido A/A ({noise:.3f}): decisión poco fiable")
+    uses_speedup = any("speedup" in c["metric"] for c in defs)
+    if sp_ is not None and noise and abs(sp_) < factor * noise and uses_speedup:
+        warns.append(f"speedup {sp_:.3f} dentro de {factor}× el ruido A/A de {sp_pass} ({noise:.3f}): "
+                     "decisión poco fiable")
+    if sp_ is not None and sp_pass != "hot" and uses_speedup:
+        warns.append("speedup medido en warm (proceso nuevo) porque la referencia o la medición no tienen pasada "
+                     "hot: incluye el coste de reinicio por longitud")
 
     h = g.get("human") or qd.get("human")
     basis = g.get("ab_basis", "prev")
@@ -1178,8 +1304,11 @@ def evaluate_gate(ctx, t, tag, st):
     )
     s = (bench or {}).get("summary") or {}
     metrics = {
+        "hot_mean_s": s.get("hot_mean_s"),
         "warm_mean_s": s.get("warm_mean_s"), "cold_mean_s": s.get("cold_mean_s"),
+        "rtf_hot_mean": s.get("rtf_hot_mean"),
         "rtf_warm_mean": s.get("rtf_warm_mean"), "talker_steps_per_s_mean": s.get("talker_steps_per_s_mean"),
+        "restart_overhead_s_mean": data["derived"].get("restart_overhead_s_mean"),
         "ufdb_lines_added_cold": s.get("ufdb_lines_added_cold"),
         "ufdb_lines_added_warm": s.get("ufdb_lines_added_warm"),
         "snr_prev_min": snr_prev,
@@ -1188,6 +1317,7 @@ def evaluate_gate(ctx, t, tag, st):
         "wer_delta_anchor": dig(data, "compare_anchor.summary.wer_delta"),
         "dur_dev_anchor": dig(data, "compare_anchor.summary.dur_dev_max"),
         "speedup": data["derived"].get("speedup"),
+        "speedup_pass": data["derived"].get("speedup_pass"),
         "cold_warm_ratio": data["derived"].get("cold_warm_ratio"),
     }
     return {
@@ -1241,20 +1371,26 @@ def write_results_md(ctx):
         for line in p.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 rows.append(json.loads(line))
-    hdr = ("| Tarea | Etiqueta | Resultado | Warm medio (s) | Cold medio (s) | RTF warm | Talker pasos/s "
-           "| ufdb + cold/warm | SNR mín. vs ant. (dB) | Δ sim. locutor | Δ WER | Desv. duración | Speedup |")
+    hdr = ("| Tarea | Etiqueta | Resultado | Hot medio (s) | Warm medio (s) | Cold medio (s) | Reinicio (s) "
+           "| RTF hot | Talker pasos/s | ufdb + cold/warm | SNR mín. vs ant. (dB) | Δ sim. locutor | Δ WER "
+           "| Desv. duración | Speedup |")
     out = ["# Resultados del banco", "",
-           "Tabla generada por loopctl a partir de `results.jsonl` (no editar a mano).", "", hdr,
-           "|" + "---|" * 13]
+           "Tabla generada por loopctl a partir de `results.jsonl` (no editar a mano).", "",
+           "Hot = misma frase en el mismo proceso (régimen estable); warm = proceso nuevo con la Find-Db ya poblada "
+           "(tras un reinicio); cold = primera vez. Reinicio = warm − hot por frase. Speedup en hot (en warm si "
+           "falta la pasada hot, marcado con *).", "", hdr,
+           "|" + "---|" * 15]
     for r in rows:
         uf = f"{fmt(r.get('ufdb_lines_added_cold'))}/{fmt(r.get('ufdb_lines_added_warm'))}"
         sp = r.get("speedup")
+        star = "*" if isinstance(sp, (int, float)) and r.get("speedup_pass") not in (None, "hot") else ""
         out.append(
-            f"| {r['task']} | {r.get('tag') or '—'} | {r.get('result')} | {fmt(r.get('warm_mean_s'))} "
-            f"| {fmt(r.get('cold_mean_s'))} | {fmt(r.get('rtf_warm_mean'))} | {fmt(r.get('talker_steps_per_s_mean'))} "
+            f"| {r['task']} | {r.get('tag') or '—'} | {r.get('result')} | {fmt(r.get('hot_mean_s'))} "
+            f"| {fmt(r.get('warm_mean_s'))} | {fmt(r.get('cold_mean_s'))} | {fmt(r.get('restart_overhead_s_mean'))} "
+            f"| {fmt(r.get('rtf_hot_mean'))} | {fmt(r.get('talker_steps_per_s_mean'))} "
             f"| {uf} | {fmt(r.get('snr_prev_min'), 1)} | {fmt(r.get('spk_delta_anchor'), 4)} "
             f"| {fmt(r.get('wer_delta_anchor'), 3)} | {fmt(r.get('dur_dev_anchor'), 3)} "
-            f"| {('%+.1f %%' % (sp * 100)) if isinstance(sp, (int, float)) else '—'} |"
+            f"| {('%+.1f %%' % (sp * 100) + star) if isinstance(sp, (int, float)) else '—'} |"
         )
     (ctx.root / LOOP / "RESULTS.md").write_text("\n".join(out) + "\n", encoding="utf-8", newline="\n")
 
@@ -1264,10 +1400,11 @@ def freeze(ctx, t):
     tag = t["last_tag"]
     bd = ctx.bench_dir(tag)
     missing = [p for p in ctx.state.get("freeze_paths", [])
-               if p != f"{LOOP}/tests-baseline.json" and not p.endswith("/") and not (ctx.root / p).exists()]
+               if p != TESTS_BASELINE_REL and not p.endswith("/") and not (ctx.root / p).exists()]
     if missing:
         raise LoopError(f"No se puede congelar la línea base: faltan {missing}")
-    if not (ctx.root / LOOP / "tests-baseline.json").exists():
+    bl = read_json(ctx.root / TESTS_BASELINE_REL)
+    if bl is None or bl.get("stale"):
         record_tests_baseline(ctx, tag)
     L["frozen"] = {p: sha256_file(ctx.root / p) for p in expand_freeze(ctx)}
     L["frozen_at"] = now()
@@ -1276,13 +1413,15 @@ def freeze(ctx, t):
     L["anchor_wavs"] = {f.relative_to(ctx.root).as_posix(): sha256_file(f) for f in sorted((bd / "warm").glob("*.wav"))}
     a = read_json(bd / "bench.json")
     b = read_json(ctx.bench_dir(f"{tag}-aa") / "bench.json")
-    wa, wb = phrase_times(a, "warm"), phrase_times(b, "warm")
-    common = sorted(set(wa) & set(wb))
     noise = {}
-    if common:
-        sa, sb = sum(wa[i] for i in common), sum(wb[i] for i in common)
-        noise["warm_rel_diff"] = abs(sa - sb) / sa if sa else None
-        noise["warm_rel_diff_max_phrase"] = max(abs(wa[i] - wb[i]) / wa[i] for i in common if wa[i])
+    for pname in ("warm", "hot"):
+        wa, wb = phrase_times(a, pname), phrase_times(b, pname)
+        common = sorted(set(wa) & set(wb))
+        if common:
+            sa, sb = sum(wa[i] for i in common), sum(wb[i] for i in common)
+            noise[f"{pname}_rel_diff"] = abs(sa - sb) / sa if sa else None
+            noise[f"{pname}_rel_diff_max_phrase"] = max(
+                (abs(wa[i] - wb[i]) / wa[i] for i in common if wa[i]), default=None)
     aa = read_json(bd / "compare-aa.json") or {}
     noise["aa_snr_db_min"] = dig(aa, "summary.snr_db_min")
     noise["aa_spk_delta"] = dig(aa, "summary.spk_cos_delta_mean")
@@ -1302,8 +1441,8 @@ def freeze(ctx, t):
 
 def record_tests_baseline(ctx, tag):
     tj = read_json(ctx.bench_dir(tag) / "tests.json", {}) or {}
-    write_json(ctx.root / LOOP / "tests-baseline.json",
-               {"recorded_at": now(), "tag": tag, "failed": sorted(tj.get("failed", [])),
+    write_json(ctx.root / TESTS_BASELINE_REL,
+               {"recorded_at": now(), "tag": tag, "rc": tj.get("rc"), "failed": sorted(tj.get("failed", [])),
                 "passed": tj.get("passed"), "passed_ids": sorted(tj.get("passed_ids", []))})
 
 
@@ -1342,6 +1481,23 @@ def close_task(ctx, t, result, reason, gate, by_human):
         switch_carrying_state(ctx, pb, msg + f" (rama {t['branch']} conservada)")
     else:
         commit_state(ctx, msg)
+    if result in ("reject", "skip") and t.get("reopened"):
+        restore_previous_pass(ctx, t, f"{result}: {reason}")
+
+
+def restore_previous_pass(ctx, t, why):
+    """Una tarea reabierta cuyo nuevo intento se rechaza u omite conserva la versión anterior, que ya está en la
+    rama de fase: vuelve a «passed» con su resultado de entonces, para que las dependencias y export cuadren."""
+    r = t["reopened"][-1]
+    prev = r.get("prev_result") or {}
+    t["status"] = "passed"
+    t["result"] = {**prev, "restored": True, "restored_at": now(), "restored_why": why}
+    if r.get("prev_tag"):
+        t["last_tag"] = r["prev_tag"]
+    ctx.save()
+    progress(ctx, f"{t['id']}: el nuevo intento no sigue adelante ({why}); se conserva la versión anterior "
+                  f"({r.get('prev_tag') or '—'}), que ya estaba en la rama de fase")
+    commit_state(ctx, f"loop({t['id']}): se conserva la versión anterior")
 
 
 # ---------------------------------------------------------------------------
@@ -1736,6 +1892,10 @@ def cmd_finish(a):
             raise LoopError("noop necesita --reason con la evidencia")
         gate = None
     elif a.result == "reject":
+        if (t.get("gate") or {}).get("tests") == "record":
+            raise LoopError("La lista de tests de partida es obligatoria para todas las puertas siguientes: si no se "
+                            f"puede registrar, bloquea la tarea (`loopctl block {t['id']} --reason …`) para que "
+                            "decida el usuario.")
         if not (t["kind"] in ("experiment", "measure") or t.get("optional")):
             raise LoopError("Una tarea obligatoria que no pasa se bloquea (`loopctl block`), no se rechaza.")
         if not a.reason:
@@ -1777,7 +1937,7 @@ def cmd_await(a):
 
 def cmd_approve(a):
     ctx = Ctx()
-    select(ctx)  # p. ej. una tarea que pide visto bueno para empezar pasa a awaiting_human
+    select(ctx, honor_stop=False)  # p. ej. una tarea que pide visto bueno para empezar pasa a awaiting_human
     t = ctx.task(a.id)
     if t["status"] != "awaiting_human":
         raise LoopError(f"{a.id} no espera aprobación (estado {t['status']}).")
@@ -1827,7 +1987,7 @@ def block_task(ctx, t, reason):
 
 def cmd_reject(a):
     ctx = Ctx()
-    select(ctx)
+    select(ctx, honor_stop=False)
     t = ctx.task(a.id)
     if t["status"] not in ("awaiting_human", "in_progress"):
         raise LoopError(f"{a.id} no está en curso ni esperando decisión.")
@@ -1888,7 +2048,8 @@ def cmd_skip(a):
     require_human(ctx, "skip", a.id, a)
     t["status"] = "in_progress"
     close_task(ctx, t, "skip", a.reason or "omitida por el usuario", None, True)
-    print(f"{a.id} omitida.")
+    print(f"{a.id} omitida." if t["status"] == "skipped" else
+          f"{a.id}: se omite el nuevo intento y se conserva la versión anterior (estado {t['status']}).")
     return 0
 
 
@@ -1922,9 +2083,104 @@ def cmd_retry(a):
         ctx.save()
     else:
         raise LoopError(f"retry solo vale para tareas bloqueadas, rechazadas u omitidas (estado {t['status']}).")
+    if ctx.loop.pop("done", None):
+        ctx.save()
     progress(ctx, f"{t['id']}: el usuario concede {extra} intentos más")
     commit_state(ctx, f"loop({t['id']}): reintento")
     print(f"{t['id']} reabierta con {extra} intentos más.")
+    return 0
+
+
+def cmd_reopen(a):
+    """Reabre una tarea ya superada de la fase en curso para rehacerla sobre la punta de la rama de fase.
+
+    Sus commits anteriores siguen en la rama de fase; el nuevo intento parte de ahí. Si hay otra tarea recién
+    empezada y sin trabajo (como tras cortar el runner justo en `begin`), vuelve a pendiente y su rama vacía se borra.
+    """
+    ctx = Ctx()
+    L = ctx.loop
+    t = ctx.task(a.id)
+    if t["status"] != "passed":
+        raise LoopError(f"reopen solo vale para tareas superadas ({a.id} está {t['status']}); para bloqueadas, "
+                        "rechazadas u omitidas usa retry.")
+    if t["phase"] != L["phase"]:
+        raise LoopError("Esa fase ya está cerrada; no se puede reabrir la tarea.")
+    if t["kind"] == "baseline" or (t["phase"] == 0 and L.get("frozen")):
+        raise LoopError("El arnés ya está congelado: reabrir una tarea de la fase 0 cambiaría la línea base.")
+    if not (a.reason or "").strip():
+        raise LoopError("reopen necesita --reason: el implementador lo leerá como la instrucción del nuevo intento.")
+    busy = running_workers(ctx)
+    if busy:
+        raise LoopError(f"Hay una verificación en curso ({', '.join(busy)}); espera a que termine.")
+    d = dirty_code(ctx.root)
+    if d:
+        raise LoopError("Haz commit de los cambios fuera de perf-loop/ antes de reabrir: " + ", ".join(d[:10]))
+    pb = ctx.phase_branch(t["phase"])
+    if not branch_exists(ctx.root, pb):
+        raise LoopError(f"No encuentro la rama de fase {pb}.")
+    reset = None
+    cur = L.get("current")
+    if cur and cur != t["id"]:
+        c = ctx.task(cur)
+        cb = c.get("branch")
+        # «Recién empezada» = su rama sigue exactamente en la base (begin no hace commits en la rama de la tarea).
+        moved = bool(cb and branch_exists(ctx.root, cb) and head_sha(ctx.root, cb) != c.get("base"))
+        if c["status"] != "in_progress" or c.get("last_tag") or c.get("attempts") or moved:
+            raise LoopError(f"La tarea {cur} está en curso con trabajo hecho (o esperando una decisión); ciérrala, "
+                            f"bloquéala u omítela antes de reabrir {t['id']}."
+                            + (f" Su rama {cb} tiene commits posteriores a su base." if moved else ""))
+        loose = untracked_outside(ctx.root)
+        if loose:
+            raise LoopError(f"Hay archivos sin seguimiento fuera de perf-loop/ (¿trabajo de la tarea {cur}?): "
+                            + ", ".join(loose[:10]) + ". Haz commit de ellos o bórralos antes de reabrir.")
+        reset = c
+    require_human(ctx, "reopen", a.id, a)
+
+    reason = a.reason.strip()
+    t.setdefault("reopened", []).append({"at": now(), "reason": reason, "prev_tag": t.get("last_tag"),
+                                         "prev_branch": t.get("branch"), "prev_result": t.get("result")})
+    notes = t.setdefault("notes", [])
+    notes.append({"at": now(), "text": f"Reabierta por el usuario: {reason}"})
+    del notes[:-30]
+    t["status"] = "pending"
+    t["extra_attempts"] = t.get("attempts", 0)  # límite = intentos ya gastados + los de una tarea nueva
+    t["last_tag"] = None  # la medición anterior ya no vale para cerrar este intento
+    for k in ("result", "human", "resume_hint", "manual_done", "branch", "base", "started_at"):
+        t.pop(k, None)  # rama y base anteriores quedan en reopened[-1]
+    L.pop("done", None)
+    stale_tests = (t.get("gate") or {}).get("tests") == "record"
+    if stale_tests:
+        bp = ctx.root / TESTS_BASELINE_REL
+        old = read_json(bp, {}) or {}
+        write_json(bp, {**old, "stale": True, "stale_reason": f"{t['id']} reabierta: {reason}", "stale_at": now()})
+    dropped = None
+    if reset:
+        dropped = reset.get("branch")
+        for k in ("branch", "base", "started_at", "resume_hint", "manual_done"):
+            reset.pop(k, None)
+        reset["status"] = "pending"
+        L["current"] = None
+        clear_marker(ctx)
+    msg = f"loop({t['id']}): reabierta por el usuario"
+    if current_branch(ctx.root) != pb:
+        switch_carrying_state(ctx, pb, msg)
+    if dropped and branch_exists(ctx.root, dropped) and current_branch(ctx.root) != dropped:
+        git(ctx.root, "branch", "-D", dropped)
+    later = [x["id"] for x in ctx.tasks if x["phase"] == t["phase"] and x["status"] == "passed"
+             and ctx.tasks.index(x) > ctx.tasks.index(t)]
+    ctx.save()
+    progress(ctx, f"{t['id']} reabierta por el usuario: {reason}"
+             + (f"; {reset['id']} vuelve a pendiente (rama vacía {dropped} borrada)" if reset else ""))
+    commit_state(ctx, msg)
+    out = [f"{t['id']} reabierta: vuelve a pendiente con {ctx.max_attempts(t)} intentos más y partirá de la punta "
+           f"de {pb}."]
+    if stale_tests:
+        out.append("La lista de tests de partida queda pendiente: se vuelve a registrar al cerrar esta tarea.")
+    if reset:
+        out.append(f"{reset['id']} vuelve a pendiente" + (f" y su rama vacía {dropped} se ha borrado." if dropped else "."))
+    if later:
+        out.append(f"Tareas posteriores de la fase ya cerradas que no se reabren: {', '.join(later)}.")
+    print(" ".join(out))
     return 0
 
 
@@ -2003,6 +2259,14 @@ def cmd_show(a):
              f" · estado {t['status']}"]
     if t.get("branch"):
         lines.append(f"Rama `{t['branch']}` · base `{str(t.get('base', ''))[:10]}` (punta de `{ctx.phase_branch(t['phase'])}`)")
+    if t.get("reopened") and t["status"] != "passed":
+        r = t["reopened"][-1]
+        lines += ["", "## Reabierta por el usuario (prioridad de este intento)", "",
+                  f"{r['reason']}",
+                  "",
+                  f"El trabajo anterior ({r.get('prev_tag') or '—'}, rama `{r.get('prev_branch') or '—'}`) ya está en la "
+                  "rama de fase y este intento parte de ahí: cambia solo lo que pide el motivo; el resto de la ficha "
+                  "describe la tarea completa."]
     lines += ["", "## Qué hacer", ""] + [str(x) for x in t.get("spec", [])]
     if t.get("files_hint"):
         lines += ["", "## Archivos de partida", ""] + [f"- `{f}`" for f in t["files_hint"]]
@@ -2129,6 +2393,16 @@ def cmd_doctor(a):
             add("FAIL", "falta .claude/skills/tts-loop/loopctl.py en el worktree")
         mism = frozen_mismatches(ctx)
         add("FAIL" if mism else "OK", "arnés congelado intacto" if not mism else f"arnés modificado: {mism}")
+        tb = read_json(root / TESTS_BASELINE_REL)
+        if tb is not None:
+            if tb.get("stale"):
+                add("INFO", f"lista de tests de partida pendiente de registrarse de nuevo ({tb.get('stale_reason', '')})")
+            elif not tb.get("passed"):
+                add("WARN", "la lista de tests de partida no tiene ningún test que pase: la regla «ningún test "
+                            "nuevo fallando» no protege nada"
+                    + ("" if ctx.loop.get("frozen") else " (revisa tests.command y reabre la tarea que la registra)"))
+        if (root / STOP_REL).exists():
+            add("WARN", "existe perf-loop/STOP: el loop no avanzará hasta que lo borres")
         busy = running_workers(ctx)
         if busy:
             add("INFO", f"verificación en curso: {', '.join(busy)}")
@@ -2379,7 +2653,7 @@ def cmd_export(a):
 WRITE_HINT = re.compile(
     r"(\btee\b|\bsed\s+-i|\bcp\b|\bmv\b|\bSet-Content\b|\bAdd-Content\b|\bOut-File\b|\btruncate\b|\btouch\b"
     r"|\brm\b|\bdel\b|\bRemove-Item\b|\bCopy-Item\b|\bMove-Item\b|open\(|write_text|write_bytes|\bdd\b|\bln\b"
-    r"|\bunlink\b|\bshutil\b|\bos\.remove\b)", re.I)
+    r"|\bunlink\b|\bshutil\b|\bos\.remove\b|\bri\b|\berase\b|\bNew-Item\b|\bni\b)", re.I)
 HARMLESS_REDIRECT = re.compile(r"\d?>&\d|[12]?>{1,2}\s*(/dev/null|NUL|\$null)\b", re.I)
 REDIRECT_TARGET = re.compile(r">{1,2}\s*[\"']?([^\s\"'|;&<>]+)")
 VENV_EXE = re.compile(r"(\./)?backend/venv/(Scripts|bin)/[\w.\-]+")
@@ -2568,7 +2842,8 @@ def hook_stop(data):
     return 0
 
 
-PROMPT_CMD = re.compile(r"^\s*/tts-loop\s+(approve|reject|ab|skip|retry|refreeze)\b\s*(\S+)?\s*(.*)$", re.I | re.S)
+PROMPT_CMD = re.compile(r"^\s*/tts-loop\s+(approve|reject|ab|skip|retry|reopen|refreeze)\b\s*(\S+)?\s*(.*)$",
+                        re.I | re.S)
 
 
 def hook_prompt(data):
@@ -2697,6 +2972,10 @@ def build_parser():
     s = add("ab", cmd_ab, "decisión humana: resultado de la escucha ciega")
     s.add_argument("id")
     s.add_argument("answer", nargs="?")
+    s.add_argument("--i-am-human", action="store_true")
+    s = add("reopen", cmd_reopen, "decisión humana: reabre una tarea superada de la fase en curso")
+    s.add_argument("id")
+    s.add_argument("--reason", default="")
     s.add_argument("--i-am-human", action="store_true")
     s = add("refreeze", cmd_refreeze, "decisión humana: acepta cambios en el arnés congelado")
     s.add_argument("--reason", default="")

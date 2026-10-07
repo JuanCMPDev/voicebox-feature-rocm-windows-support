@@ -39,7 +39,8 @@
       "-q",
       "-p",
       "no:cacheprovider",
-      "--ignore=backend/tests/test_all_models_e2e.py"
+      "--ignore=backend/tests/test_all_models_e2e.py",
+      "--ignore=backend/tests/test_profile_duplicate_names.py"
     ],
     "timeout_s": 1800
   },

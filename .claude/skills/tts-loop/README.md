@@ -41,7 +41,7 @@ Prácticas en las que se apoya:
 2. Abre Claude Code en `E:\VoiceBox\voicebox-perf` y escribe `/tts-loop`. Avanza hasta 6 tareas o hasta que necesite algo de ti.
 3. Sin supervisión (una tarea por sesión, contexto limpio cada vez), desde el worktree:
    `powershell -ExecutionPolicy Bypass -File perf-loop\run-loop.ps1`
-   Se detiene solo cuando te toca decidir, cuando algo se bloquea o al terminar.
+   Se detiene solo cuando te toca decidir, cuando algo se bloquea o al terminar. Para pararlo entre tareas sin cortar ninguna, crea el archivo `perf-loop\STOP` (`New-Item perf-loop\STOP`); el runner lo quita al volver a lanzarlo.
 
 Antes de medir, cierra la app de Voicebox: compite por la GPU y falsea el banco (`loopctl doctor` avisa).
 
@@ -56,17 +56,30 @@ Antes de medir, cierra la app de Voicebox: compite por la GPU y falsea el banco 
 | `/tts-loop reject <id> <motivo>` | Lo rechaza. Un experimento se descarta; una tarea obligatoria queda bloqueada. |
 | `/tts-loop ab <id>` · `/tts-loop ab <id> <código>` | Escucha ciega: abre la página y pega el código que genera. |
 | `/tts-loop retry <id>` · `/tts-loop skip <id> <motivo>` | Más intentos para una tarea bloqueada, u omitirla. |
+| `/tts-loop reopen <id> <motivo>` | Rehace una tarea ya superada de la fase en curso (antes de congelar, si es de la fase 0). El motivo es la instrucción del nuevo intento; si había otra tarea recién empezada y sin trabajo, vuelve a pendiente. |
 | `/tts-loop refreeze <motivo>` | Aceptas un cambio deliberado en el arnés congelado. |
 | `/tts-loop pause` · `/tts-loop export` | Pausar a mitad de tarea · rama limpia final. |
 | `/tts-loop teardown` (en el repo principal) | Borra el worktree de forma segura (ver «Si algo va mal»). |
 
-Las decisiones (approve, reject, ab, skip, retry, refreeze) solo valen si las escribes tú: un hook registra tu mensaje y `loopctl` exige ese registro. Desde tu terminal también puedes ejecutarlas con `--i-am-human`.
+Las decisiones (approve, reject, ab, skip, retry, reopen, refreeze) solo valen si las escribes tú: un hook registra tu mensaje y `loopctl` exige ese registro. Desde tu terminal también puedes ejecutarlas con `--i-am-human`.
 
 ## Ramas
 
 - `perf/qwen-f0` … `perf/qwen-f4`: una por fase, cada una sale de la anterior (lo que pide el plan: «el diff en una rama por fase»).
 - `perf/qwen-task/<id>`: una por tarea. Si pasa, avanza la rama de fase (fast-forward). Si se rechaza, se conserva para consultarla y la fase sigue sin ella.
 - `/tts-loop export` crea `perf/qwen-export` sobre tu commit original: un commit por fase, sin `.claude/` ni `perf-loop/`, lista para fusionar donde quieras.
+
+## Pasadas del banco
+
+Cada medición tiene hasta tres pasadas con las mismas frases y semillas:
+
+| Pasada | Qué es | Para qué sirve |
+| --- | --- | --- |
+| cold | Proceso nuevo; con `--miopen-db fresh`, Find-Db vacía | Coste de una longitud nueva (Find de MIOpen) |
+| warm | Proceso nuevo con la Find-Db ya poblada | Lo que se paga tras reiniciar la app. `cold − warm` aísla el Find (fase 1) |
+| hot | Mismo proceso que warm, frases repetidas | Régimen estable («longitud ya vista», 16,5 s en el plan). El speedup de la fase 3 y el lote se miden aquí |
+
+`warm − hot` es el coste de reinicio por longitud (columna «Reinicio» de `RESULTS.md`). En la primera ejecución la 0.2 lo midió en unos 50 s por frase sin líneas nuevas en la ufdb: ninguna tarea del plan lo ataca todavía.
 
 ## Puertas de calidad
 
@@ -78,7 +91,7 @@ Cada tarea tiene un tipo de calidad del plan y loopctl aplica sus umbrales:
 | 3 | Menos trabajo del códec con igual o más contexto | SNR > 40 dB; similitud de locutor ≥ base (tolerancia 0,002); WER no empeora |
 | 2 | Cómo se ejecuta la misma aritmética (kernels, grafos) | Similitud de locutor −0,01 como mucho; WER no empeora; si la onda cambia, escucha ciega de 6 pares (la base no puede ganar en más de 3) |
 
-Además, cada tarea tiene sus comprobaciones del plan (por ejemplo «Find < 3 s por frase nueva», «etapa reference < 50 ms», «la Find-Db no crece», «≥ 5 % más rápido» en los experimentos de la fase 3), tests sin fallos nuevos frente a la línea base y ruff sin errores graves en los archivos tocados.
+Además, cada tarea tiene sus comprobaciones del plan (por ejemplo «Find < 3 s por frase nueva», «etapa reference < 50 ms», «la Find-Db no crece», «≥ 5 % más rápido» en los experimentos de la fase 3), tests sin fallos nuevos frente a la línea base y ruff sin errores graves en los archivos tocados. Si pytest se interrumpe (por ejemplo, un módulo de test que no se puede importar) o la lista de partida no tiene ningún test que pase, la puerta falla en vez de darse por buena.
 
 La SNR se compara con el último estado aceptado y las métricas de voz y WER con la línea base, para que los cambios pequeños no se acumulen sin control.
 

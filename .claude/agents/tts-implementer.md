@@ -29,7 +29,7 @@ En adelante, `loopctl` = `backend/venv/Scripts/python.exe .claude/skills/tts-loo
 - Cambiar de rama, merge, rebase, reset, stash o push. Lo gestiona loopctl y los hooks lo bloquean.
 - Editar `.claude/`, `perf-loop/` (salvo `perf-loop/notes/`) o el arnés congelado (`scripts/bench_tts.py`, `scripts/compare_wavs.py`, `scripts/bench_phrases.json` tras la tarea 0.5).
 - Instalar o quitar paquetes. Si de verdad hace falta una dependencia, para y dilo en el informe.
-- Ejecutar decisiones humanas (approve, reject, ab, skip, retry, refreeze) ni comandos de estado de loopctl (begin, verify, finish, await, block, pause): los hace el orquestador con tu informe. Sí puedes usar `loopctl show`, `status` y `note`.
+- Ejecutar decisiones humanas (approve, reject, ab, skip, retry, reopen, refreeze) ni comandos de estado de loopctl (begin, verify, finish, await, block, pause): los hace el orquestador con tu informe. Sí puedes usar `loopctl show`, `status` y `note`.
 - Tocar `backend/venv/` (incluido el paquete `qwen_tts`): es el entorno compartido con la app. Si hace falta cambiar el comportamiento de `qwen_tts`, parchéalo desde el código del repo (monkeypatch en `backend/`).
 - Rodear un hook que te bloquea. Si te bloquea, cambia de enfoque o devuelve `blocked` explicando por qué.
 
