@@ -10,3 +10,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-06T22:25:17-05:00 · 0.1 empieza en perf/qwen-task/0.1 (base 4bf64ba2)
 - 2026-10-06T22:27:31-05:00 · nota 0.1: review: approve — solo añade scripts/bench_phrases.json; cumple contracts §1 (es, 12 ids pNN, seeds 1101-1112 distintos, target_s 3.1-11.9, longitudes distintas, p01/p02 las más cortas = smoke)
 - 2026-10-06T22:27:32-05:00 · 0.1: verificación 0.1-a1 lanzada
+- 2026-10-06T22:27:36-05:00 · 0.1 cerrada: pass
