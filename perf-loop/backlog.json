@@ -19,7 +19,7 @@
     "perf_ref": "0.4-a1",
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-07T02:29:11-05:00"
+    "updated_at": "2026-10-07T03:27:14-05:00"
   },
   "phases": {
     "0": {
@@ -579,7 +579,7 @@
           "compare_schema"
         ]
       },
-      "status": "in_progress",
+      "status": "awaiting_human",
       "attempts": 1,
       "branch": "perf/qwen-task/0.5",
       "base": "7e0ca6a90860932a849d4374fc049fe6f2d475d4",
@@ -587,7 +587,13 @@
       "last_tag": "0.5-a1",
       "tags": [
         "0.5-a1"
-      ]
+      ],
+      "human": {
+        "kind": "approve",
+        "at": "2026-10-07T03:27:14-05:00",
+        "tag": "0.5-a1",
+        "message": "Métricas: hot_mean_s=15.526, warm_mean_s=32.636, cold_mean_s=76.660, rtf_hot_mean=3.062, rtf_warm_mean=7.079, talker_steps_per_s_mean=8.199, restart_overhead_s_mean=17.110, ufdb_lines_added_cold=244, ufdb_lines_added_warm=0, speedup=-0.004, speedup_pass=hot, cold_warm_ratio=2.349. Revisa la rama perf/qwen-task/0.5, perf-loop/RESULTS.md y perf-loop/bench/0.5-a1/. Al aprobar se congela el arnés (scripts/bench_*, compare_wavs, frases, tests) y esta medición pasa a ser la línea base."
+      }
     },
     {
       "id": "1.1",

@@ -36,3 +36,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T02:28:46-05:00 · nota 0.4: review: approve — perf_log.py emite VBPERF por etapa (env, reference, talker, codec, normalize, effects, save, total) según contracts §4. Inerte sin VOICEBOX_PERF_LOG. No toca modelo, sampling, RNG ni el banco. bench_tts.py lo parsea tal cual. 30 tests nuevos, suite sin fallos nuevos, ruff igual que la base. 3 minors: ciclos de referencia en los envoltorios (la VRAM no se libera al descargar en modo perf), total.start() fuera del try (synchronize puede saltarse el finally), save incluye effects 
 - 2026-10-07T02:29:06-05:00 · 0.5 empieza en perf/qwen-task/0.5 (base 7e0ca6a9)
 - 2026-10-07T02:29:11-05:00 · 0.5: verificación 0.5-a1 lanzada
+- 2026-10-07T03:27:14-05:00 · 0.5 espera decisión humana (approve)
