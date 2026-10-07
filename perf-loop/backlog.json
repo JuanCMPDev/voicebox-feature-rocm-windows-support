@@ -33,7 +33,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T12:52:55-05:00",
+    "updated_at": "2026-10-07T13:26:49-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -687,7 +687,7 @@
         ]
       },
       "status": "in_progress",
-      "attempts": 1,
+      "attempts": 2,
       "branch": "perf/qwen-task/1.1",
       "base": "94a3cc5b008a8c640f334cf5a6026bc4e216e154",
       "started_at": "2026-10-07T08:03:06-05:00",
@@ -707,11 +707,20 @@
         {
           "at": "2026-10-07T12:52:55-05:00",
           "text": "reintento tras: Variante B imposible con onda idéntica: en la base el kernel naive no solo se cronometra en el Find, es el que ejecuta las convs res2net dilatadas del speaker encoder, las residuales dilatadas 3 y 9 del decoder y las depthwise g1024, sin entrada en Find-Db. Sin naive, la forma 64-1-2479-1x3-64-1-2475 dil 2 no tiene algoritmo: GetWorkSpaceSize da 0 y GemmFwdRest pide 950400 B. Forzar otro kernel con torch.backends.miopen.immediate=True, probado sin commitear, pasa esas capas a GEMM y p01 da SNR -3.4 dB y 2.96 s frente a 2.64 s, +12 %, contra 0.5-a1. Con naive activo p01 sale idéntico, 999 dB. Decide el usuario: redefinir 1.1 como calidad tipo 2, saltarla en favor de 1.3 o descartar la palanca. HEAD de la rama de la tarea aún lleva el commit 84418fb que rompe toda generación en ROCm."
+        },
+        {
+          "at": "2026-10-07T13:14:08-05:00",
+          "text": "implementer a2: humo _dev p01,p02 cold,warm,hot fresh en de44240: duraciones 2.64/3.12 s en las tres pasadas (=0.5-a1), steps 33/39; codec cold 1.15 s (base 189 s), warm 0.52 s; hot 5.7/6.6 s (base 10.9/11.6 s); ufdb 24 líneas en cold y 0 nuevas en warm/hot; SNR vs 0.5-a1 45.5/46.7 dB (onda cambia solo por redondeo: habrá A/B). p01 cold paga ~17 s de Find en la etapa reference (speaker encoder/codificador, fuera de alcance a propósito)."
+        },
+        {
+          "at": "2026-10-07T13:26:47-05:00",
+          "text": "review: approve — immediate=True solo en speech_tokenizer.decode con restauración en finally, solo ROCm GPU, VOICEBOX_CODEC_MIOPEN_IMMEDIATE=0 lo desactiva; 84418fb deshecho a mano; 2 minor: bandera global puede alcanzar a Whisper en concurrencia, tests asumen torch.backends.miopen"
         }
       ],
-      "last_tag": "1.1-a1",
+      "last_tag": "1.1-a2",
       "tags": [
-        "1.1-a1"
+        "1.1-a1",
+        "1.1-a2"
       ],
       "extra_attempts": 3,
       "consumed_tags": [
