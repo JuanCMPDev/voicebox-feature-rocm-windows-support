@@ -1,0 +1,543 @@
+{
+  "schema": "tts-loop/1",
+  "source": "perf-loop/plan.md (Plan de mejora: velocidad Qwen3-TTS local, 6 oct 2026)",
+  "loop": {},
+  "phases": {
+    "0": {"title": "Línea base y arnés de calidad"},
+    "1": {"title": "Eliminar el coste de MIOpen"},
+    "2": {"title": "Hacer menos trabajo por frase"},
+    "3": {"title": "Acelerar el talker (experimentos)"},
+    "4": {"title": "Entorno del PC y vía alternativa"}
+  },
+  "freeze_paths": [
+    "scripts/bench_tts.py",
+    "scripts/compare_wavs.py",
+    "scripts/bench_phrases.json",
+    "scripts/bench_lib/",
+    "perf-loop/tests-baseline.json"
+  ],
+  "constraints": [
+    "Ningún cambio altera el modelo, sus entradas ni el muestreo. Fuera de alcance (plan, «Qué no hacer»): el modelo 0.6B; recortar o resamplear la referencia; cuantizar el talker o pasarlo a FP16; tocar max_new_tokens, top_k, top_p, temperature o repetition_penalty; decodificar con menos contexto de referencia del que recibe hoy; torch.backends.cudnn.benchmark = True; bajar max_chunk_chars.",
+    "Variables de entorno siempre con os.environ.setdefault (respetan lo que fije el usuario) y solo en ROCm: VOICEBOX_BACKEND_VARIANT == 'rocm' o, en modo desarrollo (`python -m backend.main`, donde esa variable no existe), torch.version.hip. Los caminos CPU, CUDA, DirectML y MLX quedan intactos.",
+    "Cambios mínimos y localizados. Nada de refactors no pedidos, renombrados ni dependencias nuevas (el venv es el del repo principal y pip está bloqueado).",
+    "Toda lógica nueva lleva tests en backend/tests/ que corren sin GPU (stubs o mocks). No debilites, saltes ni borres tests existentes.",
+    "Estilo del repo: ruff (line-length 120, py312), backend/STYLE_GUIDE.md, logging en vez de print.",
+    "Compatible con Windows: pathlib, nada de supuestos POSIX. El banco arranca el servidor con `python -m backend.main`, así que todo cambio debe funcionar también en ese modo, no solo en el binario empaquetado (server.py).",
+    "Tras la línea base no se tocan scripts/bench_tts.py, scripts/compare_wavs.py ni scripts/bench_phrases.json; en perf-loop/ solo se escribe en perf-loop/notes/.",
+    "Mensajes de commit «perf(<id>): …» citando la sección del plan que implementas."
+  ],
+  "defaults": {
+    "max_attempts": {"change": 3, "experiment": 2, "measure": 2, "baseline": 2, "phase_gate": 2, "manual": 1},
+    "quality": {
+      "1": {
+        "compare": ["prev", "anchor"],
+        "checks": [
+          {"metric": "compare_prev.summary.snr_db_min", "op": ">=", "value": 50, "label": "Tipo 1: SNR mínima > 50 dB frente al último estado aceptado"},
+          {"metric": "compare_anchor.summary.dur_dev_max", "op": "<=", "value": 0.05, "label": "Duración ±5 % frente a la línea base"}
+        ]
+      },
+      "2": {
+        "compare": ["prev", "anchor"],
+        "human": "ab_if_changed",
+        "checks": [
+          {"metric": "compare_anchor.summary.spk_cos_delta_mean", "op": ">=", "value": -0.01, "label": "Tipo 2: similitud de locutor media no baja más de 0,01"},
+          {"metric": "compare_anchor.summary.wer_delta", "op": "<=", "value": 0.0, "label": "Tipo 2: WER no empeora"},
+          {"metric": "compare_anchor.summary.dur_dev_max", "op": "<=", "value": 0.05, "label": "Duración ±5 % frente a la línea base"}
+        ]
+      },
+      "3": {
+        "compare": ["prev", "anchor"],
+        "checks": [
+          {"metric": "compare_prev.summary.snr_db_min", "op": ">=", "value": 40, "label": "Tipo 3: SNR mínima > 40 dB frente al último estado aceptado"},
+          {"metric": "compare_anchor.summary.spk_cos_delta_mean", "op": ">=", "value": -0.002, "label": "Tipo 3: similitud de locutor igual o mayor (tolerancia de medida 0,002)"},
+          {"metric": "compare_anchor.summary.wer_delta", "op": "<=", "value": 0.0, "label": "WER no empeora"},
+          {"metric": "compare_anchor.summary.dur_dev_max", "op": "<=", "value": 0.05, "label": "Duración ±5 % frente a la línea base"}
+        ]
+      }
+    }
+  },
+  "tasks": [
+    {
+      "id": "0.0", "phase": 0, "kind": "measure", "quality_type": null, "implementer": false,
+      "title": "Estado inicial de los tests",
+      "spec": [
+        "Sin cambios de código: loopctl ejecuta la batería de tests de config.json sobre el código de partida y guarda qué tests ya fallan.",
+        "Todas las puertas posteriores exigen «ningún test nuevo fallando» respecto a esta lista, que se congela con la línea base."
+      ],
+      "acceptance": ["perf-loop/tests-baseline.json con la lista de fallos de partida"],
+      "gate": {"tests": "record", "lint": false, "update_refs": false}
+    },
+    {
+      "id": "0.1", "phase": 0, "kind": "change", "quality_type": null, "depends_on": ["0.0"],
+      "title": "Conjunto fijo de 12 frases",
+      "spec": [
+        "Crea scripts/bench_phrases.json con el formato de perf-loop/contracts.md §1 (plan, Fase 0, punto 1).",
+        "12 frases en español de entre 3 y 12 s de habla estimada (unos 14 caracteres por segundo), repartidas por todo el rango y con longitudes de texto todas distintas: cada longitud nueva es una forma nueva para MIOpen, que es justo lo que hay que medir.",
+        "Texto natural y neutro, sin cifras ni siglas (números con letras) para que el WER de Whisper no dependa de cómo transcribe un número.",
+        "Cada frase con id pNN, un seed entero fijo y distinto, y target_s. p01 y p02 son las frases de humo (smoke): que sean las dos más cortas (3–4 s)."
+      ],
+      "files_hint": ["scripts/bench_phrases.json (nuevo)", "perf-loop/contracts.md §1"],
+      "acceptance": ["Formato de contracts.md §1, validado por loopctl"],
+      "gate": {"validate": ["phrases"], "lint": false}
+    },
+    {
+      "id": "0.2", "phase": 0, "kind": "change", "quality_type": null, "depends_on": ["0.1"],
+      "title": "Script de banco scripts/bench_tts.py",
+      "spec": [
+        "Implementa scripts/bench_tts.py exactamente según perf-loop/contracts.md §2: CLI, ciclo de vida del servidor, pasadas cold/warm, modos de Find-Db de MIOpen, escenarios contention y batch y el formato de bench.json (plan, Fase 0, punto 2). Va fuera de la app: habla con el servidor solo por HTTP.",
+        "Antes de escribir, lee las rutas reales: backend/main.py (argumentos), backend/routes/generations.py y backend/models.py (petición de /generate y estados), backend/routes/profiles.py, backend/routes/transcription.py y backend/routes/health.py.",
+        "Datos del banco: crea o actualiza config.bench.data_dir copiando de config.bench.source_data_dir la base voicebox.db y la carpeta del perfil config.bench.profile_id. Nunca escribas en source_data_dir ni en el data dir de la app del usuario.",
+        "Las líneas VBPERF todavía no existen (las añade la tarea 0.4): si no aparecen, deja stages vacío y env_checks a null; el parseo debe estar ya implementado y cubierto por --self-test.",
+        "Incluye --self-test: sin GPU ni servidor, comprueba el parseo de VBPERF, el cálculo de summary y la construcción de comandos, y sale con 0 si todo va bien.",
+        "Para probar mientras desarrollas: `backend/venv/Scripts/python.exe scripts/bench_tts.py --config perf-loop/config.json --tag _dev --out perf-loop/bench/_dev --phrases p01 --passes warm`."
+      ],
+      "files_hint": ["scripts/bench_tts.py (nuevo)", "perf-loop/contracts.md §2 y §4", "backend/main.py", "backend/routes/generations.py"],
+      "acceptance": ["bench.json válido (contracts §2) con commit = HEAD, dirty = false y code_path dentro del worktree", "Un WAV por frase y pasada", "--self-test pasa"],
+      "gate": {
+        "bench": {"phrases": "smoke", "passes": ["cold", "warm"], "miopen_db": "persist"},
+        "selftest": [["scripts/bench_tts.py", "--self-test"]],
+        "validate": ["bench_schema"]
+      }
+    },
+    {
+      "id": "0.3", "phase": 0, "kind": "change", "quality_type": null, "depends_on": ["0.2"],
+      "title": "Métricas de calidad scripts/compare_wavs.py",
+      "spec": [
+        "Implementa scripts/compare_wavs.py según perf-loop/contracts.md §3 (plan, Fase 0, punto 4). Va antes que la instrumentación para que la 0.4 pueda demostrar que instrumentar no cambia la onda.",
+        "SNR de la onda por frase (recorta a la longitud mínima; idéntica → 999). Similitud de locutor con el propio extract_speaker_embedding del modelo Qwen3-TTS frente al audio de referencia del perfil (coseno, para ref y para cand). WER con Whisper small en español, decodificación determinista (greedy, temperature 0), contra el texto pedido normalizado. Duración.",
+        "Carga los modelos solo si --metrics los pide; GPU si hay y CPU si no. Whisper small puede descargarse una vez a la caché de Hugging Face (eso sí está permitido; instalar paquetes no). Copia el enfoque de backend/backends/pytorch_backend.py (PyTorchSTTBackend) pero no importes nada de backend/: el evaluador no puede cambiar cuando cambia el código que evalúa (contracts.md §5).",
+        "Incluye --self-test sin GPU ni modelos: SNR sintética (idéntica → 999; ruido de potencia conocida → valor esperado ±0,5 dB), WER con cadenas conocidas, normalización de texto y longitudes distintas."
+      ],
+      "files_hint": ["scripts/compare_wavs.py (nuevo)", "scripts/bench_lib/ (opcional, para código compartido)", "perf-loop/contracts.md §3 y §5", "backend/backends/pytorch_backend.py (solo como referencia)"],
+      "acceptance": ["--self-test pasa", "Comparar el banco de humo de la 0.2 consigo mismo da SNR 999, Δ locutor 0 y Δ WER 0"],
+      "gate": {
+        "selftest": [["scripts/compare_wavs.py", "--self-test"]],
+        "compare": ["self"],
+        "validate": ["compare_schema"],
+        "checks": [
+          {"metric": "compare_self.summary.n", "op": ">=", "value": 2, "label": "Compara al menos las 2 frases de humo", "required": true},
+          {"metric": "compare_self.summary.snr_db_min", "op": ">=", "value": 999, "label": "Un audio frente a sí mismo da SNR 999", "required": true},
+          {"metric": "compare_self.summary.spk_cos_delta_mean", "op": "abs<=", "value": 1e-6, "label": "Δ similitud de locutor 0 consigo mismo", "required": true},
+          {"metric": "compare_self.summary.wer_delta", "op": "abs<=", "value": 1e-9, "label": "Δ WER 0 consigo mismo", "required": true}
+        ]
+      }
+    },
+    {
+      "id": "0.4", "phase": 0, "kind": "change", "quality_type": 1, "depends_on": ["0.3"],
+      "title": "Instrumentación por etapa (VBPERF)",
+      "spec": [
+        "Añade la instrumentación del plan (Fase 0, punto 3) y del informe (sección «Instrumentación»), con el formato de perf-loop/contracts.md §4.",
+        "Solo se activa con VOICEBOX_PERF_LOG=1; sin la variable no hay coste ni salida nueva.",
+        "torch.cuda.synchronize() antes de cada marca (solo si hay GPU) y time.perf_counter(). Etapas: reference (create_voice_prompt), talker (envolver self.model.model.generate; pasos y pasos/s), codec (envolver speech_tokenizer.decode; T, trozos), normalize, effects, save y total.",
+        "Una línea `VBPERF {json}` por etapa con gen_id, por logging a stderr (Tauri la recoge como server-log; no toques la BD). Al cargar el modelo, una línea stage=env con cudnn.benchmark, torch.backends.miopen.immediate si existe, model.config._attn_implementation, dtype del códec, versiones de torch/HIP, todas las MIOPEN_* efectivas y la ruta efectiva de la Find-Db de usuario.",
+        "Si bench_tts.py necesita ajustes para leer estas líneas, hazlos ahora (el arnés se congela en la 0.5).",
+        "Tests: el helper de medida y el formato de línea, con un reloj y un sincronizador falsos."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py (_load_model_sync 90-125, create_voice_prompt 138-193, _generate_sync 226-243)", "backend/services/generation.py (59-128)", "perf-loop/informe.md («Instrumentación»)"],
+      "acceptance": ["La onda no cambia frente al banco de la 0.2", "Cada frase warm trae stages reference/talker/codec y bench.json trae env_checks"],
+      "gate": {
+        "bench": {"phrases": "smoke", "passes": ["cold", "warm"], "miopen_db": "persist"},
+        "compare": ["prev"],
+        "tests": true,
+        "validate": ["bench_schema", "stages"]
+      }
+    },
+    {
+      "id": "0.5", "phase": 0, "kind": "baseline", "quality_type": null, "implementer": false, "depends_on": ["0.4"],
+      "title": "Línea base A/A y congelación del arnés",
+      "spec": [
+        "Sin cambios de código. loopctl mide el conjunto completo dos veces (A/A) con una Find-Db de MIOpen vacía, para medir el coste real de cada longitud nueva y el ruido de medida, y registra qué tests fallan ya.",
+        "Tarda: con el código actual cada frase nueva cuesta 137–162 s, así que cuenta con una o dos horas.",
+        "Al aprobarla, el usuario congela el arnés (scripts/bench_*, compare_wavs, frases, tests base) y esta medición pasa a ser la línea base de todas las puertas."
+      ],
+      "acceptance": ["Tabla base completa (RESULTS.md)", "Reparto por etapa conocido", "Ruido A/A registrado en baseline-report.md"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh"},
+        "tests": true,
+        "validate": ["bench_schema", "stages", "phrases", "compare_schema"]
+      }
+    },
+    {
+      "id": "1.1", "phase": 1, "kind": "change", "quality_type": 1,
+      "title": "MIOpen híbrido sin el solver naive (variante B)",
+      "spec": [
+        "Plan, Fase 1, variante B: en backend/app.py, junto a MIOPEN_LOG_LEVEL (≈ línea 102) y antes de `import torch`, fija con setdefault MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_FWD=0 y MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_BWD=0 solo en ROCm.",
+        "VOICEBOX_BACKEND_VARIANT lo fija server.py:55 antes de importar el backend; en modo desarrollo no existe, así que añade como segunda condición torch.version.hip después de importar torch (MIOpen lee estas variables en la primera convolución, no al importar).",
+        "Extrae la decisión a una función pequeña y testeable (entorno, variante, hip) → cambios, para cubrirla con tests sin GPU."
+      ],
+      "files_hint": ["backend/app.py (41-105)", "backend/server.py (53-59)"],
+      "acceptance": ["El Find suma menos de 3 s por frase nueva", "Onda idéntica (tipo 1)"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.find_overhead_s_mean", "op": "<=", "value": 3.0, "label": "Find por frase nueva < 3 s (cold − warm)"}
+        ]
+      }
+    },
+    {
+      "id": "1.2", "phase": 1, "kind": "change", "quality_type": 1, "depends_on": ["1.1"],
+      "title": "Find-Db de MIOpen persistente y propia de la app",
+      "spec": [
+        "Plan, Fase 1, «Find-Db persistente y propia de la app»: MIOPEN_USER_DB_PATH y MIOPEN_CUSTOM_CACHE_DIR = {data_dir}/cache/miopen (setdefault, crea la carpeta), solo en ROCm.",
+        "En el binario: backend/server.py antes de `from backend.main import app` (≈ línea 93), leyendo --data-dir de sys.argv. En modo desarrollo (`python -m backend.main`, el que usa el banco) hace falta el equivalente: hazlo en main() tras parsear --data-dir (antes de uvicorn.run) o en config.set_data_dir; ambos caminos deben dar la misma ruta.",
+        "Tests de la resolución de rutas y de que setdefault respeta un valor del usuario."
+      ],
+      "files_hint": ["backend/server.py (≈ 88-93)", "backend/main.py", "backend/config.py (set_data_dir)"],
+      "acceptance": ["La Find-Db efectiva vive en {data_dir}/cache/miopen y se llena", "Onda idéntica (tipo 1)"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "persist"},
+        "tests": true,
+        "checks": [
+          {"metric": "bench.env_checks.miopen_user_db_path", "op": "contains", "value": "cache/miopen", "label": "La Find-Db efectiva está en {data_dir}/cache/miopen"},
+          {"metric": "bench.summary.ufdb_lines_total", "op": ">=", "value": 1, "label": "La Find-Db propia se llena"}
+        ]
+      }
+    },
+    {
+      "id": "1.3", "phase": 1, "kind": "measure", "quality_type": null, "implementer": false, "optional": true, "depends_on": ["1.2"],
+      "title": "Medir la variante A (MIOPEN_FIND_MODE=FAST) como alternativa",
+      "spec": [
+        "Sin cambios de código: misma medición que 1.1 con MIOPEN_FIND_MODE=FAST en el entorno, encima de la variante B.",
+        "Solo informa (plan: «la A queda como alternativa si el banco la iguala»). No mueve las referencias."
+      ],
+      "acceptance": ["Fila en RESULTS.md para comparar con 1.1/1.2"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh", "env": {"MIOPEN_FIND_MODE": "FAST"}},
+        "compare": ["prev"],
+        "update_refs": false
+      }
+    },
+    {
+      "id": "1.4", "phase": 1, "kind": "change", "quality_type": 1, "depends_on": ["1.2"],
+      "title": "Calentamiento al cargar el modelo",
+      "spec": [
+        "Plan, Fase 1, «Calentamiento al cargar el modelo»: al final de _load_model_sync, decodifica códigos ficticios para 300 y para 32…320 de 32 en 32 pasos (el fragmento del plan) y ejecuta un paso del talker con un texto corto.",
+        "Muestra el calentamiento en el estado loading_model. Solo en ROCm; en CPU/CUDA/MLX no debe cambiar el tiempo de carga.",
+        "Con la Find-Db persistente (1.2) el coste es solo la primera vez."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py (_load_model_sync 90-125)"],
+      "acceptance": ["Find por frase nueva < 3 s", "Onda idéntica (tipo 1)"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.find_overhead_s_mean", "op": "<=", "value": 3.0, "label": "Find por frase nueva < 3 s (cold − warm)"}
+        ]
+      }
+    },
+    {
+      "id": "1.G", "phase": 1, "kind": "phase_gate", "quality_type": null, "implementer": false,
+      "depends_on": ["1.1", "1.2", "1.3", "1.4"],
+      "title": "Puerta de la fase 1",
+      "spec": ["Banco completo con Find-Db vacía frente a la línea base. Puerta del plan: frase nueva = frase vista ±10 %; SNR > 50 dB en las 12 frases."],
+      "acceptance": ["Frase nueva = frase vista ±10 %", "SNR > 50 dB frente a la línea base"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh"},
+        "compare": ["prev", "anchor"],
+        "checks": [
+          {"metric": "derived.cold_warm_ratio", "op": "<=", "value": 1.10, "label": "Frase nueva = frase vista ±10 %"},
+          {"metric": "derived.find_overhead_s_mean", "op": "<=", "value": 3.0, "label": "Find por frase nueva < 3 s"},
+          {"metric": "compare_anchor.summary.snr_db_min", "op": ">=", "value": 50, "label": "Fase 1 solo tiene cambios de tipo 1: SNR > 50 dB frente a la línea base", "required": true}
+        ]
+      }
+    },
+    {
+      "id": "2.1", "phase": 2, "kind": "change", "quality_type": 1,
+      "title": "Arreglar la caché del prompt de voz",
+      "spec": [
+        "Plan, Fase 2.1 e informe H4: convierte la lista que devuelve create_voice_clone_prompt a dict con self.model._prompt_items_to_voice_clone_prompt(items) antes de cachear (guarda también ref_text), para que el isinstance(dict) existente acierte y torch.load(weights_only=True) funcione (solo tensores, listas y bools).",
+        "Tensores a CPU al guardar y a self.device al leer.",
+        "Tests: ida y vuelta de la caché en disco con un prompt falso (tensores CPU), incluido el caso de caché corrupta."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py (157-193)", "backend/utils/cache.py (64-72)", "backend/services/profiles.py (581-591)"],
+      "acceptance": ["Etapa reference < 50 ms con caché", "Onda idéntica (tipo 1)"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "persist"},
+        "tests": true,
+        "checks": [
+          {"metric": "bench.summary.stage_ms_mean.reference", "op": "<=", "value": 50, "label": "Etapa reference < 50 ms (pasada warm)"}
+        ]
+      }
+    },
+    {
+      "id": "2.4", "phase": 2, "kind": "change", "quality_type": 1, "depends_on": ["2.1"],
+      "title": "Una sola cola para la GPU y estado «queued»",
+      "spec": [
+        "Plan, Fase 2.4 e informe H5: pasa /transcribe (routes/transcription.py:79) por la misma cola serie de task_queue.py o por un asyncio.Lock compartido con _generate_sync y _create_prompt_sync, para que una transcripción no robe GPU a una generación ni se quede esperando a medias.",
+        "Crea la fila con status=\"queued\" en routes/generations.py:101 y deja que generation.py:73 la pase a generating. Revisa que el frontend tolere el estado nuevo (app/ y web/: búsqueda de 'generating'); si hace falta, añade solo el literal y su traducción es/en.",
+        "Tests: serialización (una transcripción lanzada durante una generación espera como mucho a que termine esa generación) y transición queued → generating → completed."
+      ],
+      "files_hint": ["backend/routes/transcription.py (42, 79)", "backend/services/task_queue.py (39-66)", "backend/routes/generations.py (91-104)", "backend/services/generation.py (73)"],
+      "acceptance": ["/transcribe nunca espera más que una generación", "Onda idéntica (tipo 1)"],
+      "gate": {
+        "bench": {"phrases": "smoke", "passes": ["warm"], "miopen_db": "persist", "scenario": "contention"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.transcribe_wait_ratio", "op": "<=", "value": 1.0, "label": "La transcripción espera como mucho una generación"}
+        ]
+      }
+    },
+    {
+      "id": "2.5", "phase": 2, "kind": "change", "quality_type": 1, "depends_on": ["2.4"],
+      "title": "/health sin bloquear el loop de eventos",
+      "spec": [
+        "Plan, Fase 2.5: scan_cache_dir() a asyncio.to_thread o cacheado 60 s (routes/health.py:146-149), para que el sondeo de 30 s no frene el loop mientras se genera.",
+        "Test de que la caché de 60 s no repite el escaneo."
+      ],
+      "files_hint": ["backend/routes/health.py (146-149)"],
+      "acceptance": ["Onda idéntica (tipo 1)"],
+      "gate": {
+        "bench": {"phrases": "smoke", "passes": ["warm"], "miopen_db": "persist"},
+        "tests": true
+      }
+    },
+    {
+      "id": "2.2", "phase": 2, "kind": "change", "quality_type": 3, "depends_on": ["2.5"], "plan_first": true,
+      "title": "Decodificar solo contexto acotado + salida",
+      "spec": [
+        "Plan, Fase 2.2: sustituye en _generate_sync la llamada a generate_voice_clone por sus cuatro pasos (tokenizar, self.model.model.generate, decodificar, cortar) y decodifica cat(ref_code[-C:], codes) con C = min(pasos_ref, 128), cortando exactamente C × 1920 muestras.",
+        "Mismo tokenizado, mismo talker, mismos argumentos de muestreo que generate_voice_clone (copia sus valores por defecto del paquete qwen_tts; no los cambies). Lee qwen_tts/inference/qwen3_tts_model.py:470-631 en backend/venv/Lib/site-packages antes de escribir.",
+        "Con C = 128 la salida recibe tanto o más contexto que hoy para referencias ≥ 24 s; para referencias cortas, toda la referencia (como hoy). Nunca C = 0.",
+        "Tests: la aritmética del corte con un decodificador falso que devuelve muestras numeradas, para C = 128 y para referencias más cortas."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py (226-243)", "qwen_tts/inference/qwen3_tts_model.py (470-631)", "tokenizer_v2 chunked_decode (886-895), decode (993-1017)"],
+      "acceptance": ["SNR > 40 dB frente al último estado", "Similitud de locutor igual o mayor", "Etapa codec más corta"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "persist"},
+        "tests": true
+      }
+    },
+    {
+      "id": "2.3", "phase": 2, "kind": "change", "quality_type": 1, "depends_on": ["2.2"],
+      "title": "Agrupar longitudes del códec en múltiplos de 32",
+      "spec": [
+        "Plan, Fase 2.3: rellena la secuencia que entra al códec hasta el múltiplo de 32 pasos con filas de -1; decode ya recorta a la longitud real (tokenizer_v2:1012-1017) y el decodificador es causal, así que las muestras anteriores no cambian.",
+        "Con 2.2, T = C + pasos_gen queda entre ~140 y ~300: todas esas formas están precalentadas por 1.4, así que ninguna frase dispara un Find.",
+        "Tests: padding y recorte con un decodificador falso."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py", "qwen_tts tokenizer_v2 (183-191, 1012-1017)", "qwen3_tts_tokenizer.py:328"],
+      "acceptance": ["La Find-Db no gana líneas tras el calentamiento", "SNR > 50 dB frente a 2.2"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh"},
+        "tests": true,
+        "checks": [
+          {"metric": "bench.summary.ufdb_lines_added_cold", "op": "<=", "value": 0, "label": "La Find-Db no gana líneas en la pasada cold (tras el calentamiento)"},
+          {"metric": "bench.summary.ufdb_lines_added_warm", "op": "<=", "value": 0, "label": "La Find-Db no gana líneas en la pasada warm"}
+        ]
+      }
+    },
+    {
+      "id": "2.G", "phase": 2, "kind": "phase_gate", "quality_type": null, "implementer": false,
+      "depends_on": ["2.1", "2.4", "2.5", "2.2", "2.3"],
+      "title": "Puerta de la fase 2",
+      "spec": ["Banco completo con Find-Db vacía. Puertas del plan: Find-Db sin líneas nuevas, etapa reference < 50 ms, SNR > 40 dB y similitud de locutor ≥ base frente a la línea base."],
+      "acceptance": ["Find-Db sin líneas nuevas", "Similitud de locutor ≥ línea base"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh"},
+        "compare": ["prev", "anchor"],
+        "checks": [
+          {"metric": "bench.summary.ufdb_lines_added_cold", "op": "<=", "value": 0, "label": "Find-Db sin líneas nuevas"},
+          {"metric": "derived.cold_warm_ratio", "op": "<=", "value": 1.10, "label": "Frase nueva = frase vista ±10 %"},
+          {"metric": "bench.summary.stage_ms_mean.reference", "op": "<=", "value": 50, "label": "Etapa reference < 50 ms"},
+          {"metric": "compare_anchor.summary.snr_db_min", "op": ">=", "value": 40, "label": "SNR > 40 dB frente a la línea base", "required": true},
+          {"metric": "compare_anchor.summary.spk_cos_delta_mean", "op": ">=", "value": -0.002, "label": "Similitud de locutor ≥ línea base (tolerancia 0,002)", "required": true},
+          {"metric": "compare_anchor.summary.wer_delta", "op": "<=", "value": 0.0, "label": "WER no empeora", "required": true},
+          {"metric": "compare_anchor.summary.dur_dev_max", "op": "<=", "value": 0.05, "label": "Duración ±5 %", "required": true}
+        ]
+      }
+    },
+    {
+      "id": "3.1", "phase": 3, "kind": "measure", "quality_type": null,
+      "title": "Perfilar un paso del talker",
+      "spec": [
+        "Plan, Fase 3.1: perfila una frase de ~6 s con torch.profiler (CPU y GPU) y escribe perf-loop/notes/3.1-profile.md con el reparto por paso: talker forward, code_predictor.generate, número de lanzamientos de kernel, tiempo CPU frente a GPU y huecos de la GPU.",
+        "Confirma o corrige el orden recomendado (3.2 → 3.3 → 3.7 → 3.4 → 3.6 → 3.5) con datos; no cambies código de producción.",
+        "Puedes añadir un script de perfilado en scripts/ (por ejemplo scripts/profile_talker.py). Guarda las trazas grandes en perf-loop/bench/_profile/ (no van a git)."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py (_generate_sync)", "qwen_tts/core/models/modeling_qwen3_tts.py (1671-1680, 2022, 2272)"],
+      "acceptance": ["perf-loop/notes/3.1-profile.md con cifras y recomendación"],
+      "gate": {"validate": ["files"], "files": ["perf-loop/notes/3.1-profile.md"], "update_refs": false}
+    },
+    {
+      "id": "3.2", "phase": 3, "kind": "experiment", "quality_type": 2, "depends_on": ["3.1"], "plan_first": true,
+      "title": "Bucle propio para code_predictor.generate",
+      "spec": [
+        "Plan, Fase 3.2: sustituye el code_predictor.generate() de HF que corre en cada paso (modeling_qwen3_tts.py:1671-1680) por un bucle propio de 15 forwards con DynamicCache y el mismo muestreo (temperatura → top-k → top-p → torch.multinomial, en el orden de los warpers de HF). Parche sobre talker.code_predictor.generate desde pytorch_backend.py.",
+        "Objetivo: salida idéntica (SNR > 50 dB). Si se respeta el orden de los warpers y el consumo del RNG, lo es; si no, valen las métricas de tipo 2 y la escucha ciega.",
+        "Tests: con un code predictor diminuto de pesos aleatorios y el mismo seed, el bucle propio y HF generate producen los mismos tokens."
+      ],
+      "files_hint": ["qwen_tts/core/models/modeling_qwen3_tts.py (1671-1680)", "backend/backends/pytorch_backend.py", "perf-loop/notes/3.1-profile.md"],
+      "acceptance": ["≥ 5 % más rápido en warm", "Tipo 2 (idéntico si SNR > 50 dB; si no, métricas y escucha ciega)"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["warm"], "miopen_db": "persist"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.speedup", "op": ">=", "value": 0.05, "label": "Al menos 5 % más rápido que el último estado aceptado"}
+        ]
+      }
+    },
+    {
+      "id": "3.3", "phase": 3, "kind": "experiment", "quality_type": 1, "depends_on": ["3.2"],
+      "title": "Prioridad del proceso e inference_mode",
+      "spec": [
+        "Plan, Fase 3.3: prioridad del proceso del servidor «por encima de lo normal» (SetPriorityClass con ctypes al arrancar, solo Windows; también en modo desarrollo) y torch.inference_mode() en _generate_sync.",
+        "Tests: la llamada de prioridad no se hace fuera de Windows y no rompe si falla."
+      ],
+      "files_hint": ["backend/server.py", "backend/main.py", "backend/backends/pytorch_backend.py (226)"],
+      "acceptance": ["≥ 5 % más rápido (regla de la fase 3)", "Onda idéntica"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["warm"], "miopen_db": "persist"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.speedup", "op": ">=", "value": 0.05, "label": "Al menos 5 % más rápido que el último estado aceptado"}
+        ]
+      }
+    },
+    {
+      "id": "3.7", "phase": 3, "kind": "experiment", "quality_type": 1, "depends_on": ["3.3"], "allow_noop": true,
+      "title": "Atención SDPA en el talker",
+      "spec": [
+        "Plan, Fase 3.7: mira model.config._attn_implementation en env_checks del bench.json de la línea base (perf-loop/bench/<línea base>/bench.json). Si ya es sdpa, no cambies código y devuelve status «noop» con esa evidencia; el orquestador la hará revisar y cerrará la tarea.",
+        "Si sale eager, fuerza attn_implementation=\"sdpa\" en from_pretrained (pytorch_backend.py:116-121), solo si aotriton está disponible en el venv."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py (116-121)"],
+      "acceptance": ["≥ 5 % más rápido, o noop con evidencia"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["warm"], "miopen_db": "persist"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.speedup", "op": ">=", "value": 0.05, "label": "Al menos 5 % más rápido que el último estado aceptado"}
+        ]
+      }
+    },
+    {
+      "id": "3.4", "phase": 3, "kind": "experiment", "quality_type": 2, "depends_on": ["3.7"],
+      "title": "GEMM afinados con TunableOp",
+      "spec": [
+        "Plan, Fase 3.4: en backend/app.py (solo ROCm, setdefault) PYTORCH_TUNABLEOP_ENABLED=1, PYTORCH_TUNABLEOP_TUNING=0, PYTORCH_TUNABLEOP_FILENAME={data_dir}/cache/tunableop.csv y, si hipBLASLt soporta gfx1101 en ROCm 7.2.1, PYTORCH_TUNABLEOP_HIPBLASLT_ENABLED=1 (compruébalo y anótalo en perf-loop/notes/3.4.md; si no, desactiva ese flag).",
+        "El afinado lo hace loopctl con una pasada previa del banco con TUNING=1 que escribe el CSV en el data dir del banco; la medición posterior es de solo lectura. No toques bench_tts.py.",
+        "Tests de la resolución de rutas y de setdefault."
+      ],
+      "files_hint": ["backend/app.py", "backend/config.py"],
+      "acceptance": ["≥ 5 % más rápido", "Tipo 2: métricas objetivas y escucha ciega si la onda cambia"],
+      "gate": {
+        "bench": {
+          "phrases": "all", "passes": ["warm"], "miopen_db": "persist",
+          "pre_runs": [{"suffix": "tune", "env": {"PYTORCH_TUNABLEOP_ENABLED": "1", "PYTORCH_TUNABLEOP_TUNING": "1"}}]
+        },
+        "tests": true,
+        "checks": [
+          {"metric": "derived.speedup", "op": ">=", "value": 0.05, "label": "Al menos 5 % más rápido que el último estado aceptado"}
+        ]
+      }
+    },
+    {
+      "id": "3.6", "phase": 3, "kind": "experiment", "quality_type": 1, "depends_on": ["3.4"], "plan_first": true,
+      "title": "Modo lote opcional para trabajos en cola",
+      "spec": [
+        "Plan, Fase 3.6: cuando haya ≥ 2 trabajos en cola con el mismo perfil, motor, idioma y tamaño, generarlos en una sola llamada (generate_voice_clone acepta listas). Opt-in con VOICEBOX_QWEN_BATCH=1; sin la variable, comportamiento individual idéntico al actual.",
+        "Con un seed dado la salida en lote no coincide con la individual (el RNG se consume distinto); documéntalo en el código y en perf-loop/notes/3.6.md.",
+        "Tests: agrupación en task_queue (qué se agrupa y qué no) con generaciones falsas."
+      ],
+      "files_hint": ["backend/services/task_queue.py", "backend/services/generation.py"],
+      "acceptance": ["Camino individual idéntico (SNR > 50 dB)", "Rendimiento en lote ≥ 1,5× con 4 trabajos en cola", "Decisión de producto del usuario"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["warm"], "miopen_db": "persist", "scenario": "batch", "concurrent": 4, "env": {"VOICEBOX_QWEN_BATCH": "1"}},
+        "tests": true,
+        "human": "approve",
+        "update_refs": false,
+        "checks": [
+          {"metric": "derived.batch_throughput_gain", "op": ">=", "value": 1.5, "label": "Rendimiento en lote ≥ 1,5× con 4 trabajos"}
+        ]
+      }
+    },
+    {
+      "id": "3.5a", "phase": 3, "kind": "measure", "quality_type": null, "depends_on": ["3.6"],
+      "title": "Prueba de soporte de grafos HIP (1 h)",
+      "spec": [
+        "Plan, Fase 3.5, prueba previa: comprueba en 1 hora como máximo si torch.cuda.CUDAGraph funciona en este torch ROCm de Windows con un matmul de 10 líneas (captura, replay con entradas nuevas, resultado correcto) y luego con un forward de una capa del talker con KV cache estática.",
+        "Escribe perf-loop/notes/3.5a-hipgraph.md con el resultado; la primera línea debe ser exactamente `VEREDICTO: viable` o `VEREDICTO: inviable`. Si es inviable, la puerta falla, el orquestador la rechaza y la 3.5b se omite sola."
+      ],
+      "acceptance": ["perf-loop/notes/3.5a-hipgraph.md con veredicto"],
+      "gate": {"validate": ["files"], "files": ["perf-loop/notes/3.5a-hipgraph.md"], "files_match": {"perf-loop/notes/3.5a-hipgraph.md": "^VEREDICTO: viable\\s*$"}, "update_refs": false}
+    },
+    {
+      "id": "3.5b", "phase": 3, "kind": "experiment", "quality_type": 2, "requires": ["3.5a"], "human_start": true,
+      "human_start_message": "Son 3–5 días de trabajo (plan, Fase 3.5). Lee perf-loop/notes/3.5a-hipgraph.md antes de decidir.",
+      "plan_first": true, "max_attempts": 3,
+      "title": "Grafos HIP para el paso de decodificación",
+      "spec": [
+        "Plan, Fase 3.5: KV cache estática (cache_implementation=\"static\") y captura del forward del talker y del bucle del code predictor con torch.cuda.CUDAGraph; la generación repite el grafo con entradas nuevas. Sin torch.compile (no hay Triton en Windows).",
+        "Capa propia de decodificación en pytorch_backend.py, opt-in por variable de entorno hasta que pase la puerta; con fallback automático al camino actual si la captura falla."
+      ],
+      "files_hint": ["backend/backends/pytorch_backend.py", "perf-loop/notes/3.5a-hipgraph.md"],
+      "acceptance": ["≥ 5 % más rápido (se esperan 2–4× en el talker)", "Tipo 2: métricas y escucha ciega si la onda cambia"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["warm"], "miopen_db": "persist"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.speedup", "op": ">=", "value": 0.05, "label": "Al menos 5 % más rápido que el último estado aceptado"}
+        ]
+      }
+    },
+    {
+      "id": "3.G", "phase": 3, "kind": "phase_gate", "quality_type": null, "implementer": false,
+      "depends_on": ["3.1", "3.2", "3.3", "3.7", "3.4", "3.6", "3.5a", "3.5b"],
+      "title": "Puerta de la fase 3",
+      "spec": ["Banco completo con Find-Db vacía frente a la línea base. Si la onda acumulada cambió, escucha ciega frente a la línea base."],
+      "acceptance": ["Métricas objetivas ≥ base", "Escucha ciega sin preferencia por la base"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["cold", "warm"], "miopen_db": "fresh"},
+        "compare": ["prev", "anchor"],
+        "human": "ab_if_changed",
+        "ab_basis": "anchor",
+        "checks": [
+          {"metric": "bench.summary.ufdb_lines_added_cold", "op": "<=", "value": 0, "label": "Find-Db sin líneas nuevas"},
+          {"metric": "compare_anchor.summary.spk_cos_delta_mean", "op": ">=", "value": -0.01, "label": "Similitud de locutor no baja más de 0,01", "required": true},
+          {"metric": "compare_anchor.summary.wer_delta", "op": "<=", "value": 0.0, "label": "WER no empeora", "required": true},
+          {"metric": "compare_anchor.summary.dur_dev_max", "op": "<=", "value": 0.05, "label": "Duración ±5 %", "required": true}
+        ]
+      }
+    },
+    {
+      "id": "4.1", "phase": 4, "kind": "manual", "quality_type": null, "implementer": false,
+      "title": "Ajustes de Windows (sin código)",
+      "human_message": "Plan, Fase 4 «Entorno Windows»: (1) Configuración → Pantalla → Gráficos: programación de GPU acelerada por hardware activada; (2) plan de energía de alto rendimiento; (3) Adrenalin: perfil «Rendimiento» o reloj mínimo elevado; (4) confirma que driver y HIP SDK son los que exige torch 2.9.1+rocm7.2.1 y si la versión nueva de ROCm trae bases de MIOpen para gfx1101; (5) cierra otras cargas de GPU durante el banco. Reinicia si hace falta y apruébala; después loopctl mide.",
+      "spec": ["Pasos manuales del usuario y medición posterior sin cambios de código."],
+      "acceptance": ["Medición tras los ajustes en RESULTS.md", "Onda idéntica"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["warm"], "miopen_db": "persist"},
+        "compare": ["prev"],
+        "checks": [
+          {"metric": "compare_prev.summary.snr_db_min", "op": ">=", "value": 50, "label": "Sin cambios de código: onda idéntica", "required": true}
+        ]
+      }
+    },
+    {
+      "id": "4.2", "phase": 4, "kind": "experiment", "quality_type": 1, "depends_on": ["4.1"],
+      "title": "PYTORCH_HIP_ALLOC_CONF=expandable_segments:True",
+      "spec": [
+        "Plan, Fase 4: en backend/app.py, solo ROCm y con setdefault, PYTORCH_HIP_ALLOC_CONF=expandable_segments:True para reducir la fragmentación con los workspaces de MIOpen. El plan avisa de que puede ser neutro; entonces se rechaza.",
+        "Test de setdefault."
+      ],
+      "files_hint": ["backend/app.py"],
+      "acceptance": ["≥ 5 % más rápido"],
+      "gate": {
+        "bench": {"phrases": "all", "passes": ["warm"], "miopen_db": "persist"},
+        "tests": true,
+        "checks": [
+          {"metric": "derived.speedup", "op": ">=", "value": 0.05, "label": "Al menos 5 % más rápido que el último estado aceptado"}
+        ]
+      }
+    },
+    {
+      "id": "4.3", "phase": 4, "kind": "manual", "quality_type": null, "implementer": false, "optional": true,
+      "depends_on": ["4.2"],
+      "title": "Decidir la vía Linux (WSL2/Docker + vLLM)",
+      "human_message": "Plan, Fase 4 «Vía alternativa»: es un cambio de stack (instalar y mantener ROCm en WSL2 y validar vLLM en gfx1101), fuera del alcance de este loop. Mira perf-loop/RESULTS.md: si las fases 1–3 dejaron la frase de 6 s cerca de 8–10 s, probablemente no compensa. Aprobar = lo harás aparte; skip = se descarta.",
+      "spec": ["Decisión del usuario; el loop no instala nada."],
+      "acceptance": ["Decisión registrada"]
+    }
+  ]
+}

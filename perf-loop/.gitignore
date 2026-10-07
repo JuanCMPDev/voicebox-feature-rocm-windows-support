@@ -1,0 +1,5 @@
+bench/
+logs/
+.iteration
+.human-token.json
+*.tmp

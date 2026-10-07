@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(backend/venv/Scripts/python.exe .claude/skills/tts-loop/loopctl.py *)",
+      "Bash(backend/venv/Scripts/python.exe -m pytest *)",
+      "Bash(backend/venv/Scripts/python.exe -m ruff *)",
+      "Bash(backend/venv/Scripts/python.exe scripts/*)",
+      "Bash(backend/venv/Scripts/python.exe -c *)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git rev-parse *)",
+      "Bash(git branch --show-current)",
+      "Bash(git ls-files *)",
+      "Bash(git restore *)",
+      "Bash(git blame *)",
+      "Bash(ls)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(sleep *)",
+      "Bash(mkdir *)"
+    ],
+    "deny": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(git reset *)",
+      "Bash(git clean *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git stash *)",
+      "Bash(git worktree *)",
+      "Bash(git branch -D *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(pip install *)",
+      "Bash(pip uninstall *)"
+    ]
+  },
+  "env": {
+    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
+    "BASH_DEFAULT_TIMEOUT_MS": "600000",
+    "BASH_MAX_TIMEOUT_MS": "600000"
+  },
+  "disabledMcpjsonServers": ["voicebox"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/backend/venv/Scripts/python.exe",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/skills/tts-loop/loopctl.py", "hook", "session-start"],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/backend/venv/Scripts/python.exe",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/skills/tts-loop/loopctl.py", "hook", "prompt"],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/backend/venv/Scripts/python.exe",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/skills/tts-loop/loopctl.py", "hook", "pre-bash"],
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/backend/venv/Scripts/python.exe",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/skills/tts-loop/loopctl.py", "hook", "pre-edit"],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/backend/venv/Scripts/python.exe",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/skills/tts-loop/loopctl.py", "hook", "stop"],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

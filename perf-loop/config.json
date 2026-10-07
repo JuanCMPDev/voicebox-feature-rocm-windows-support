@@ -1,0 +1,67 @@
+{
+  "schema": "tts-loop-config/1",
+  "main_repo": "E:\\VoiceBox\\voicebox",
+  "worktree": "E:\\VoiceBox\\voicebox-perf",
+  "branch_prefix": "perf/qwen",
+  "python": "backend/venv/Scripts/python.exe",
+  "pause_at_phase_gates": true,
+  "skip_optional": false,
+  "max_tasks_per_run": 6,
+  "bench": {
+    "port": 17599,
+    "user_app_port": 17493,
+    "source_data_dir": "E:\\VoiceBox\\voicebox\\data",
+    "profile_id": "13af40fe-73de-4b76-86c2-45878bb5100a",
+    "data_dir": "perf-loop/bench/_data",
+    "language": "es",
+    "engine": "qwen",
+    "model_size": "1.7B",
+    "smoke_phrases": [
+      "p01",
+      "p02"
+    ],
+    "server_start_timeout_s": 600,
+    "timeout_s": 10800,
+    "env": {
+      "VOICEBOX_PERF_LOG": "1"
+    }
+  },
+  "compare": {
+    "whisper_model": "small",
+    "timeout_s": 3600
+  },
+  "tests": {
+    "command": [
+      "{python}",
+      "-m",
+      "pytest",
+      "backend/tests",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "--ignore=backend/tests/test_all_models_e2e.py"
+    ],
+    "timeout_s": 1800
+  },
+  "lint": {
+    "command": [
+      "{python}",
+      "-m",
+      "ruff",
+      "check",
+      "--no-cache",
+      "--output-format",
+      "concise",
+      "--select",
+      "E9,F63,F7,F82"
+    ]
+  },
+  "ab": {
+    "pairs": 6,
+    "max_base_preferred": 3
+  },
+  "noise": {
+    "speedup_factor": 2.0
+  },
+  "created_at": "2026-10-06T22:23:05-05:00"
+}
