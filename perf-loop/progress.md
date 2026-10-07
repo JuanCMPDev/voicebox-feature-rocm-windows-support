@@ -77,3 +77,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T17:37:41-05:00 · 2.2 cerrada: skip — El códec ya tarda 0,33 s tras la 1.1; un cambio de tipo 3 no compensa
 - 2026-10-07T17:37:41-05:00 · 2.3 cerrada: skip — Sin coste por longitud nueva tras 1.1 y 1.4 (reinicio 0,17 s)
 - 2026-10-07T17:37:49-05:00 · Fase 1 cerrada; empieza la fase 2: Hacer menos trabajo por frase
+- 2026-10-07T17:38:01-05:00 · Rama de fase perf/qwen-f2 creada desde perf/qwen-f1
