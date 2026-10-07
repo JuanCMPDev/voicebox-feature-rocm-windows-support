@@ -59,3 +59,7 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T15:50:34-05:00 · nota 1.2: review: approve — módulo stdlib nuevo, MIOPEN_USER_DB_PATH y MIOPEN_CUSTOM_CACHE_DIR con setdefault en data dir/cache/miopen solo en ROCm, server.py antes de importar la app y main.py antes de uvicorn.run, 47 tests. 1 minor: no reconoce abreviaturas argparse de --data-dir
 - 2026-10-07T15:50:34-05:00 · 1.2: verificación 1.2-a1 lanzada
 - 2026-10-07T16:03:57-05:00 · 1.2 cerrada: pass
+- 2026-10-07T16:04:13-05:00 · 1.4 empieza en perf/qwen-task/1.4 (base 1116af01)
+- 2026-10-07T16:23:30-05:00 · nota 1.4: implementer a1: warm-up al cargar el modelo solo en ROCm, decode del codec en 300 y 32..320 paso 32 y un paso de talker con 2 tokens, commit 4a0aed7
+- 2026-10-07T16:23:34-05:00 · nota 1.4: implementer a1: humo _dev p01: carga 17.96 s con warm-up de 5.5 s, primera frase 8.12 a 6.05 s, Find-Db sigue en 24 líneas, SNR vs 1.2-a1 999 dB. Riesgos: más 5.5 s por carga, is_loaded ya es true durante el warm-up, caché de kernels del banco ya poblada
+- 2026-10-07T16:35:13-05:00 · 1.4: verificación 1.4-a1 lanzada
