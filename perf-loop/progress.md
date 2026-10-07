@@ -58,3 +58,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T15:40:43-05:00 · nota 1.2: implementer a1: ufdb 24 líneas en cold y 0 nuevas en hot, más ukdb, duración 2.64 s, SNR vs 1.1-a2 999 dB. Riesgo: la carpeta del banco ya queda poblada y el cold de verify no parte de Find-Db vacía
 - 2026-10-07T15:50:34-05:00 · nota 1.2: review: approve — módulo stdlib nuevo, MIOPEN_USER_DB_PATH y MIOPEN_CUSTOM_CACHE_DIR con setdefault en data dir/cache/miopen solo en ROCm, server.py antes de importar la app y main.py antes de uvicorn.run, 47 tests. 1 minor: no reconoce abreviaturas argparse de --data-dir
 - 2026-10-07T15:50:34-05:00 · 1.2: verificación 1.2-a1 lanzada
+- 2026-10-07T16:03:57-05:00 · 1.2 cerrada: pass
