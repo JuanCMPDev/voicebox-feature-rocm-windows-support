@@ -15,7 +15,7 @@
       "1": "perf/qwen-f1",
       "2": "perf/qwen-f2"
     },
-    "current": null,
+    "current": "2.4",
     "anchor": "0.5-a1",
     "quality_ref": "2.1-a1",
     "perf_ref": "2.1-a1",
@@ -34,7 +34,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T18:13:48-05:00",
+    "updated_at": "2026-10-07T18:54:38-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1150,8 +1150,21 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/2.4",
+      "base": "1282c3aa4174d73e3e4ad5d420fc7b973c8de73e",
+      "started_at": "2026-10-07T18:14:08-05:00",
+      "notes": [
+        {
+          "at": "2026-10-07T18:54:37-05:00",
+          "text": "review: approve — asyncio.Lock FIFO compartido entre el worker de la cola y /transcribe (transcripción espera como máximo una generación); filas nacen 'queued' y cancel/cleanup/_force_fail las tratan como activas; 1 minor (la tabla puede quedarse en 'En cola…' si el historial se pide antes de pasar a generating, p. ej. prompt sin caché); fuera de alcance: MCP transcribe y dictado usan Whisper sin lock"
+        }
+      ],
+      "last_tag": "2.4-a1",
+      "tags": [
+        "2.4-a1"
+      ]
     },
     {
       "id": "2.5",
