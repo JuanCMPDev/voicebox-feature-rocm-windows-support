@@ -30,3 +30,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T01:41:38-05:00 · nota 0.3: review: approve — compare_wavs.py cumple contracts §3 (SNR común con 999 si idénticos, coseno de locutor con extract_speaker_embedding strict, Whisper greedy es, dur_dev; null si no se pide); sin imports de backend/; self-test, 20 tests y ruff OK; 0.2-a2 contra sí mismo: SNR 999, deltas 0. 4 minors: speaker encoder siempre en CPU (desvío documentado), Whisper en ROCm escribe en la Find-Db por defecto (decidir antes de congelar en 0.5), embed de la referencia sin CompareError, multi-muestra sin n
 - 2026-10-07T01:41:38-05:00 · 0.3: verificación 0.3-a1 lanzada
 - 2026-10-07T01:47:44-05:00 · 0.3 cerrada: pass
+- 2026-10-07T01:48:03-05:00 · 0.4 empieza en perf/qwen-task/0.4 (base c1daaeae)
+- 2026-10-07T02:18:13-05:00 · 0.4: verificación 0.4-a1 lanzada
