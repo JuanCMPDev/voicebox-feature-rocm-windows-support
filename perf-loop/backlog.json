@@ -13,13 +13,13 @@
     "phase_branches": {
       "0": "perf/qwen-f0"
     },
-    "current": "0.0",
+    "current": null,
     "anchor": null,
     "quality_ref": "0.2-a1",
     "perf_ref": "0.2-a1",
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-07T00:22:13-05:00"
+    "updated_at": "2026-10-07T00:28:33-05:00"
   },
   "phases": {
     "0": {
@@ -166,7 +166,7 @@
         "lint": false,
         "update_refs": false
       },
-      "status": "in_progress",
+      "status": "passed",
       "attempts": 2,
       "last_tag": "0.0-a2",
       "tags": [
@@ -202,7 +202,15 @@
       "extra_attempts": 1,
       "branch": "perf/qwen-task/0.0-r2",
       "base": "0cf12cf2bcf0297b0606a6ee1f432cfc7043d5f0",
-      "started_at": "2026-10-07T00:22:10-05:00"
+      "started_at": "2026-10-07T00:22:10-05:00",
+      "result": {
+        "kind": "pass",
+        "reason": "",
+        "at": "2026-10-07T00:28:33-05:00",
+        "tag": "0.0-a2",
+        "verdict": "pass",
+        "by_human": false
+      }
     },
     {
       "id": "0.1",
