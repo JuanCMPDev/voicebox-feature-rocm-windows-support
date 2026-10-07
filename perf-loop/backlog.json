@@ -33,7 +33,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T17:20:42-05:00",
+    "updated_at": "2026-10-07T17:20:46-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1007,7 +1007,7 @@
           }
         ]
       },
-      "status": "blocked",
+      "status": "in_progress",
       "attempts": 1,
       "branch": "perf/qwen-task/1.G",
       "base": "335315e91c66d329145b0030bcb23ac36f45a6b0",
@@ -1020,13 +1020,17 @@
         {
           "at": "2026-10-07T17:00:36-05:00",
           "text": "orquestador: criterios de la puerta OK pero hot 12.62 s vs 8.79 s de 1.4-a1 (-43.7 %). El talker cae de 8.2 a 5.6 pasos/s a mitad de la pasada cold (p05-p12) y sigue en ~5.7 en warm y hot tras reiniciar el proceso; mismo código que 1.4, la Find-Db no afecta al talker. Apunta a la GPU (térmica, energía u otro proceso), no al código. Conviene repetir el banco antes de aprobar"
+        },
+        {
+          "at": "2026-10-07T17:20:46-05:00",
+          "text": "reintento tras: rechazada por el usuario: Banco degradado por el entorno: talker de 8,2 a 5,6 pasos/s a mitad de la pasada cold; repetir"
         }
       ],
-      "result": {
-        "kind": "blocked",
-        "reason": "rechazada por el usuario: Banco degradado por el entorno: talker de 8,2 a 5,6 pasos/s a mitad de la pasada cold; repetir",
-        "at": "2026-10-07T17:20:42-05:00"
-      }
+      "extra_attempts": 2,
+      "consumed_tags": [
+        "1.G-a1"
+      ],
+      "resume_hint": "verify"
     },
     {
       "id": "2.1",
