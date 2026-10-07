@@ -9,7 +9,7 @@ import os
 import torch
 import numpy as np
 
-from ..utils import miopen_codec, perf_log
+from ..utils import miopen_codec, perf_log, qwen_warmup
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +133,16 @@ class PyTorchTTSBackend:
             getattr(torch.version, "hip", None),
         ):
             miopen_codec.use_immediate_mode_for_codec(self.model)
+
+        # ROCm: pay the first decode of each codec length and the first talker step here, while a generation that
+        # triggered the load still shows loading_model. After the immediate-mode wrapper, so the warm-up decodes run
+        # as generation does; before VBPERF, so it logs no talker/codec lines.
+        if qwen_warmup.warmup_enabled(
+            self.device,
+            os.environ.get("VOICEBOX_BACKEND_VARIANT"),
+            getattr(torch.version, "hip", None),
+        ):
+            qwen_warmup.warm_up(self.model)
 
         if perf_log.is_enabled():
             perf_log.instrument_qwen_model(self.model)
