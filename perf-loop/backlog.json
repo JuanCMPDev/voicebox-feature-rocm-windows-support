@@ -19,7 +19,7 @@
     "perf_ref": "0.2-a1",
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-06T23:19:11-05:00"
+    "updated_at": "2026-10-07T00:21:37-05:00"
   },
   "phases": {
     "0": {
@@ -166,29 +166,39 @@
         "lint": false,
         "update_refs": false
       },
-      "status": "passed",
+      "status": "pending",
       "attempts": 1,
-      "branch": "perf/qwen-task/0.0",
-      "base": "674497f653e31c35b741ad698f2cb20c72354dde",
-      "started_at": "2026-10-06T22:23:59-05:00",
-      "last_tag": "0.0-a1",
+      "last_tag": null,
       "tags": [
         "0.0-a1"
       ],
-      "result": {
-        "kind": "pass",
-        "reason": "",
-        "at": "2026-10-06T22:24:24-05:00",
-        "tag": "0.0-a1",
-        "verdict": "pass",
-        "by_human": false
-      },
       "notes": [
         {
           "at": "2026-10-06T22:24:58-05:00",
           "text": "Linea base de tests vacia: pytest se interrumpio por un ImportError al colectar test_profile_duplicate_names.py (relative import beyond top-level package). passed=0, asi que la puerta de ningun test nuevo fallando queda vacia mientras persista. Falta continue-on-collection-errors o ignorar ese modulo en el comando de tests del config. Decide el usuario."
+        },
+        {
+          "at": "2026-10-07T00:21:37-05:00",
+          "text": "Reabierta por el usuario: Repetir la lista de tests de partida: el primer intento la registró vacía porque pytest se interrumpía al recoger backend/tests/test_profile_duplicate_names.py (import roto); config.json ya lo ignora."
         }
-      ]
+      ],
+      "reopened": [
+        {
+          "at": "2026-10-07T00:21:37-05:00",
+          "reason": "Repetir la lista de tests de partida: el primer intento la registró vacía porque pytest se interrumpía al recoger backend/tests/test_profile_duplicate_names.py (import roto); config.json ya lo ignora.",
+          "prev_tag": "0.0-a1",
+          "prev_branch": "perf/qwen-task/0.0",
+          "prev_result": {
+            "kind": "pass",
+            "reason": "",
+            "at": "2026-10-06T22:24:24-05:00",
+            "tag": "0.0-a1",
+            "verdict": "pass",
+            "by_human": false
+          }
+        }
+      ],
+      "extra_attempts": 1
     },
     {
       "id": "0.1",
@@ -252,12 +262,13 @@
       ],
       "title": "Script de banco scripts/bench_tts.py",
       "spec": [
-        "Implementa scripts/bench_tts.py exactamente según perf-loop/contracts.md §2: CLI, ciclo de vida del servidor, pasadas cold/warm, modos de Find-Db de MIOpen, escenarios contention y batch y el formato de bench.json (plan, Fase 0, punto 2). Va fuera de la app: habla con el servidor solo por HTTP.",
+        "Implementa scripts/bench_tts.py exactamente según perf-loop/contracts.md §2: CLI, ciclo de vida del servidor, pasadas cold/warm/hot (hot reutiliza el proceso de la pasada anterior; contracts.md §2), modos de Find-Db de MIOpen, escenarios contention y batch y el formato de bench.json (plan, Fase 0, punto 2). Va fuera de la app: habla con el servidor solo por HTTP.",
+        "La pasada hot repite las mismas frases en el mismo proceso del servidor que la pasada anterior (sin reiniciar ni recargar): es la «longitud ya vista» del plan (16,5 s). En bench.json: server.<pasada>.pid en todas las pasadas, server.hot = {load_s: null, pid, same_process_as}, summary.hot_mean_s/hot_median_s/rtf_hot_mean/ufdb_lines_added_hot y stage_ms_mean_hot/talker_steps_per_s_mean_hot (stage_ms_mean y talker_steps_per_s_mean siguen sobre warm). El escenario batch compara con los wall_s de la pasada hot (campo ref_pass). Cubre todo esto en --self-test y en backend/tests/test_bench_tts.py.",
         "Antes de escribir, lee las rutas reales: backend/main.py (argumentos), backend/routes/generations.py y backend/models.py (petición de /generate y estados), backend/routes/profiles.py, backend/routes/transcription.py y backend/routes/health.py.",
         "Datos del banco: crea o actualiza config.bench.data_dir copiando de config.bench.source_data_dir la base voicebox.db y la carpeta del perfil config.bench.profile_id. Nunca escribas en source_data_dir ni en el data dir de la app del usuario.",
         "Las líneas VBPERF todavía no existen (las añade la tarea 0.4): si no aparecen, deja stages vacío y env_checks a null; el parseo debe estar ya implementado y cubierto por --self-test.",
         "Incluye --self-test: sin GPU ni servidor, comprueba el parseo de VBPERF, el cálculo de summary y la construcción de comandos, y sale con 0 si todo va bien.",
-        "Para probar mientras desarrollas: `backend/venv/Scripts/python.exe scripts/bench_tts.py --config perf-loop/config.json --tag _dev --out perf-loop/bench/_dev --phrases p01 --passes warm`."
+        "Para probar mientras desarrollas: `backend/venv/Scripts/python.exe scripts/bench_tts.py --config perf-loop/config.json --tag _dev --out perf-loop/bench/_dev --phrases p01 --passes warm,hot`."
       ],
       "files_hint": [
         "scripts/bench_tts.py (nuevo)",
@@ -268,14 +279,16 @@
       "acceptance": [
         "bench.json válido (contracts §2) con commit = HEAD, dirty = false y code_path dentro del worktree",
         "Un WAV por frase y pasada",
-        "--self-test pasa"
+        "--self-test pasa",
+        "Con --passes cold,warm,hot, la pasada hot corre en el mismo proceso que warm (mismo pid) y summary.hot_mean_s tiene valor"
       ],
       "gate": {
         "bench": {
           "phrases": "smoke",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -287,6 +300,15 @@
         ],
         "validate": [
           "bench_schema"
+        ],
+        "tests": true,
+        "checks": [
+          {
+            "metric": "bench.summary.hot_mean_s",
+            "op": ">=",
+            "value": 0,
+            "label": "bench.json trae la pasada hot (summary.hot_mean_s)"
+          }
         ]
       },
       "status": "passed",
@@ -384,7 +406,8 @@
             "label": "Δ WER 0 consigo mismo",
             "required": true
           }
-        ]
+        ],
+        "tests": true
       },
       "status": "pending",
       "attempts": 0
@@ -413,14 +436,15 @@
       ],
       "acceptance": [
         "La onda no cambia frente al banco de la 0.2",
-        "Cada frase warm trae stages reference/talker/codec y bench.json trae env_checks"
+        "Cada frase warm y hot trae stages reference/talker/codec y bench.json trae env_checks"
       ],
       "gate": {
         "bench": {
           "phrases": "smoke",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -448,6 +472,7 @@
       "title": "Línea base A/A y congelación del arnés",
       "spec": [
         "Sin cambios de código. loopctl mide el conjunto completo dos veces (A/A) con una Find-Db de MIOpen vacía, para medir el coste real de cada longitud nueva y el ruido de medida, y registra qué tests fallan ya.",
+        "Pasadas: cold (proceso nuevo, primera vez), warm (proceso nuevo con la Find-Db ya poblada: lo que se paga tras un reinicio) y hot (mismas frases en el mismo proceso que warm: «longitud ya vista», el caso de 16,5 s del plan). Ver contracts.md §2.",
         "Tarda: con el código actual cada frase nueva cuesta 137–162 s, así que cuenta con una o dos horas.",
         "Al aprobarla, el usuario congela el arnés (scripts/bench_*, compare_wavs, frases, tests base) y esta medición pasa a ser la línea base de todas las puertas."
       ],
@@ -461,7 +486,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh"
         },
@@ -500,7 +526,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh"
         },
@@ -545,7 +572,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -591,7 +619,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh",
           "env": {
@@ -632,7 +661,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh"
         },
@@ -666,7 +696,7 @@
         "Banco completo con Find-Db vacía frente a la línea base. Puerta del plan: frase nueva = frase vista ±10 %; SNR > 50 dB en las 12 frases."
       ],
       "acceptance": [
-        "Frase nueva = frase vista ±10 %",
+        "Frase nueva = misma frase en un proceso nuevo ±10 % (cold/warm)",
         "SNR > 50 dB frente a la línea base"
       ],
       "gate": {
@@ -674,7 +704,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh"
         },
@@ -687,7 +718,7 @@
             "metric": "derived.cold_warm_ratio",
             "op": "<=",
             "value": 1.1,
-            "label": "Frase nueva = frase vista ±10 %"
+            "label": "Frase nueva = misma frase en un proceso nuevo ±10 % (cold/warm: el Find desaparece)"
           },
           {
             "metric": "derived.find_overhead_s_mean",
@@ -732,7 +763,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -777,7 +809,8 @@
         "bench": {
           "phrases": "smoke",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist",
           "scenario": "contention"
@@ -818,7 +851,8 @@
         "bench": {
           "phrases": "smoke",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -858,7 +892,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -895,7 +930,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh"
         },
@@ -944,7 +980,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh"
         },
@@ -963,7 +1000,7 @@
             "metric": "derived.cold_warm_ratio",
             "op": "<=",
             "value": 1.1,
-            "label": "Frase nueva = frase vista ±10 %"
+            "label": "Frase nueva = misma frase en un proceso nuevo ±10 % (cold/warm: el Find desaparece)"
           },
           {
             "metric": "bench.summary.stage_ms_mean.reference",
@@ -1055,14 +1092,15 @@
         "perf-loop/notes/3.1-profile.md"
       ],
       "acceptance": [
-        "≥ 5 % más rápido en warm",
+        "≥ 5 % más rápido en hot (mismo proceso)",
         "Tipo 2 (idéntico si SNR > 50 dB; si no, métricas y escucha ciega)"
       ],
       "gate": {
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -1105,7 +1143,8 @@
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -1146,7 +1185,8 @@
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -1189,7 +1229,8 @@
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist",
           "pre_runs": [
@@ -1198,7 +1239,10 @@
               "env": {
                 "PYTORCH_TUNABLEOP_ENABLED": "1",
                 "PYTORCH_TUNABLEOP_TUNING": "1"
-              }
+              },
+              "passes": [
+                "warm"
+              ]
             }
           ]
         },
@@ -1243,7 +1287,8 @@
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist",
           "scenario": "batch",
@@ -1327,7 +1372,8 @@
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -1373,7 +1419,8 @@
           "phrases": "all",
           "passes": [
             "cold",
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "fresh"
         },
@@ -1435,7 +1482,8 @@
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },
@@ -1478,7 +1526,8 @@
         "bench": {
           "phrases": "all",
           "passes": [
-            "warm"
+            "warm",
+            "hot"
           ],
           "miopen_db": "persist"
         },

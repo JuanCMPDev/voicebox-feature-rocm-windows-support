@@ -5,5 +5,8 @@
     "::tests.test_profile_duplicate_names"
   ],
   "passed": 0,
-  "passed_ids": []
+  "passed_ids": [],
+  "stale": true,
+  "stale_reason": "0.0 reabierta: Repetir la lista de tests de partida: el primer intento la registró vacía porque pytest se interrumpía al recoger backend/tests/test_profile_duplicate_names.py (import roto); config.json ya lo ignora.",
+  "stale_at": "2026-10-07T00:21:37-05:00"
 }

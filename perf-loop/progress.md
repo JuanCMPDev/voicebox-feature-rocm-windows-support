@@ -16,3 +16,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-06T23:15:22-05:00 · nota 0.2: review: approve — solo añade scripts/bench_tts.py y su test; cumple contracts §2. Menores: batch throughput_gain inflado (warm en proceso nuevo vs lote ya caliente; decidir antes de congelar en 0.5), ufdb delta entre carpetas distintas si cambia la Find-Db, sondeo a 0,2 s.
 - 2026-10-06T23:15:22-05:00 · 0.2: verificación 0.2-a1 lanzada
 - 2026-10-06T23:19:11-05:00 · 0.2 cerrada: pass
+- 2026-10-06T23:19:32-05:00 · 0.3 empieza en perf/qwen-task/0.3 (base 7e8f01a4)
+- 2026-10-07T00:21:37-05:00 · 0.0 reabierta por el usuario: Repetir la lista de tests de partida: el primer intento la registró vacía porque pytest se interrumpía al recoger backend/tests/test_profile_duplicate_names.py (import roto); config.json ya lo ignora.; 0.3 vuelve a pendiente (rama vacía perf/qwen-task/0.3 borrada)
