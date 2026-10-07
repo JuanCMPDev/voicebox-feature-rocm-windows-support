@@ -32,3 +32,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T01:47:44-05:00 · 0.3 cerrada: pass
 - 2026-10-07T01:48:03-05:00 · 0.4 empieza en perf/qwen-task/0.4 (base c1daaeae)
 - 2026-10-07T02:18:13-05:00 · 0.4: verificación 0.4-a1 lanzada
+- 2026-10-07T02:28:26-05:00 · 0.4 cerrada: pass
