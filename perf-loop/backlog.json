@@ -13,13 +13,13 @@
     "phase_branches": {
       "0": "perf/qwen-f0"
     },
-    "current": null,
+    "current": "0.1",
     "anchor": null,
     "quality_ref": null,
     "perf_ref": null,
     "frozen": {},
     "noise": {},
-    "updated_at": "2026-10-06T22:24:24-05:00"
+    "updated_at": "2026-10-06T22:27:32-05:00"
   },
   "phases": {
     "0": {
@@ -182,7 +182,13 @@
         "tag": "0.0-a1",
         "verdict": "pass",
         "by_human": false
-      }
+      },
+      "notes": [
+        {
+          "at": "2026-10-06T22:24:58-05:00",
+          "text": "Linea base de tests vacia: pytest se interrumpio por un ImportError al colectar test_profile_duplicate_names.py (relative import beyond top-level package). passed=0, asi que la puerta de ningun test nuevo fallando queda vacia mientras persista. Falta continue-on-collection-errors o ignorar ese modulo en el comando de tests del config. Decide el usuario."
+        }
+      ]
     },
     {
       "id": "0.1",
@@ -212,8 +218,21 @@
         ],
         "lint": false
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/0.1",
+      "base": "4bf64ba2c4731ba02858b04ba8037c790880511c",
+      "started_at": "2026-10-06T22:25:17-05:00",
+      "notes": [
+        {
+          "at": "2026-10-06T22:27:31-05:00",
+          "text": "review: approve — solo añade scripts/bench_phrases.json; cumple contracts §1 (es, 12 ids pNN, seeds 1101-1112 distintos, target_s 3.1-11.9, longitudes distintas, p01/p02 las más cortas = smoke)"
+        }
+      ],
+      "last_tag": "0.1-a1",
+      "tags": [
+        "0.1-a1"
+      ]
     },
     {
       "id": "0.2",
