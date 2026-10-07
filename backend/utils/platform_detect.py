@@ -43,7 +43,8 @@ def is_amd_gpu_windows() -> bool:
                 "powershell",
                 "-Command",
                 "Get-CimInstance Win32_VideoController | "
-                "Where-Object {$_.AdapterCompatibility -like '*AMD*'} | "
+                "Where-Object {$_.AdapterCompatibility -match 'AMD|Advanced Micro Devices|ATI' "
+                "-or $_.Name -match 'Radeon|AMD'} | "
                 "Measure-Object | Select-Object -ExpandProperty Count",
             ],
             capture_output=True,
