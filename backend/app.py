@@ -9,8 +9,6 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from .utils.miopen_env import apply_miopen_env_defaults
-
 
 class ColoredFormatter(logging.Formatter):
     """Custom formatter to add colors matching uvicorn's style."""
@@ -103,14 +101,8 @@ if not os.environ.get("HSA_OVERRIDE_GFX_VERSION"):
         )
 if not os.environ.get("MIOPEN_LOG_LEVEL"):
     os.environ["MIOPEN_LOG_LEVEL"] = "4"
-# ROCm: keep MIOpen's naive conv solvers out of Find (minutes per new codec length). server.py sets
-# VOICEBOX_BACKEND_VARIANT before importing the backend; in development (python -m backend.main) it is unset,
-# so torch.version.hip is checked right after importing torch. MIOpen reads them at the first convolution.
-apply_miopen_env_defaults(os.environ.get("VOICEBOX_BACKEND_VARIANT"), hip=None)
 
 import torch
-
-apply_miopen_env_defaults(os.environ.get("VOICEBOX_BACKEND_VARIANT"), hip=getattr(torch.version, "hip", None))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import quote
