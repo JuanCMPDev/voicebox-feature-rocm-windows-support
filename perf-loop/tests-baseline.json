@@ -1,0 +1,9 @@
+{
+  "recorded_at": "2026-10-06T22:24:24-05:00",
+  "tag": "0.0-a1",
+  "failed": [
+    "::tests.test_profile_duplicate_names"
+  ],
+  "passed": 0,
+  "passed_ids": []
+}
