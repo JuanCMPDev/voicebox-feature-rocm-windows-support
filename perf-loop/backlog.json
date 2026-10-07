@@ -1262,8 +1262,16 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "skipped",
+      "attempts": 0,
+      "result": {
+        "kind": "skip",
+        "reason": "Sin coste por longitud nueva tras 1.1 y 1.4 (reinicio 0,17 s)",
+        "at": "2026-10-07T17:37:41-05:00",
+        "tag": null,
+        "verdict": null,
+        "by_human": true
+      }
     },
     {
       "id": "2.G",

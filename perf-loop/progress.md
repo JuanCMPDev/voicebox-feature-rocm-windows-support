@@ -75,3 +75,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T17:28:31-05:00 · 1.G espera decisión humana (approve)
 - 2026-10-07T17:37:40-05:00 · 1.G cerrada: pass — Repetida tras banco degradado: hot 8,96 s
 - 2026-10-07T17:37:41-05:00 · 2.2 cerrada: skip — El códec ya tarda 0,33 s tras la 1.1; un cambio de tipo 3 no compensa
+- 2026-10-07T17:37:41-05:00 · 2.3 cerrada: skip — Sin coste por longitud nueva tras 1.1 y 1.4 (reinicio 0,17 s)
