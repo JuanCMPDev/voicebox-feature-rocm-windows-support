@@ -33,7 +33,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T08:37:12-05:00",
+    "updated_at": "2026-10-07T12:52:51-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -631,20 +631,27 @@
       "id": "1.1",
       "phase": 1,
       "kind": "change",
-      "quality_type": 1,
-      "title": "MIOpen híbrido sin el solver naive (variante B)",
+      "quality_type": 2,
+      "title": "Códec en GEMM: modo inmediato de MIOpen solo en el decodificador",
       "spec": [
-        "Plan, Fase 1, variante B: en backend/app.py, junto a MIOPEN_LOG_LEVEL (≈ línea 102) y antes de `import torch`, fija con setdefault MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_FWD=0 y MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_BWD=0 solo en ROCm.",
-        "VOICEBOX_BACKEND_VARIANT lo fija server.py:55 antes de importar el backend; en modo desarrollo no existe, así que añade como segunda condición torch.version.hip después de importar torch (MIOpen lee estas variables en la primera convolución, no al importar).",
-        "Extrae la decisión a una función pequeña y testeable (entorno, variante, hip) → cambios, para cubrirla con tests sin GPU."
+        "Decisión del usuario (7 oct), tras el intento 1.1-a1: la variante B (quitar el solver naive) no es viable. El naive es el kernel que ejecuta varias convoluciones porque PyTorch le da 0 bytes de workspace a MIOpen y GEMM no cabe; sin naive esas capas se quedan sin algoritmo. Forzar GEMM en todo el modelo (torch.backends.miopen.immediate=True) cambia también el speaker encoder, el muestreo diverge y sale otra locución (p01: SNR −3,4 dB, duración +12 %). Pero en esa prueba el códec tardó 1,4 s en frío con la Find-Db vacía, frente a 189 s en frío y 6,5 s en hot en la línea base. Esta tarea aplica GEMM solo donde no puede cambiar el muestreo.",
+        "PRIMERO: deshaz a mano el commit 84418fb que sigue en esta rama (fija MIOPEN_DEBUG_CONV_DIRECT_NAIVE_CONV_FWD/BWD=0 y rompe toda generación en ROCm): quita esas variables de backend/utils/miopen_env.py, backend/app.py y sus tests, y haz commit. No uses git revert (el hook lo bloquea) ni dejes el naive desactivado en ningún sitio.",
+        "Activa el modo inmediato de MIOpen SOLO durante la decodificación del códec: el mismo tramo que mide la etapa VBPERF «codec», es decir, model.model.speech_tokenizer.decode (ver backend/utils/perf_log.py, instrument_qwen_model). Envuelve esa llamada al cargar el modelo en pytorch_backend.py, con independencia de VOICEBOX_PERF_LOG: guarda el valor previo de torch.backends.miopen.immediate, pon True, llama al decode original y restaura el valor en un finally. No lo actives para el speaker encoder, el codificador del códec (la referencia, etapa «reference»), el talker ni Whisper: así los tokens no cambian y la onda solo difiere por redondeo.",
+        "Solo en ROCm (VOICEBOX_BACKEND_VARIANT == 'rocm' o, en modo desarrollo, torch.version.hip), y con una variable para desactivarlo que respete lo que fije el usuario: VOICEBOX_CODEC_MIOPEN_IMMEDIATE (por defecto activo en ROCm; '0' lo desactiva). En CPU, CUDA, DirectML y MLX no cambia nada.",
+        "La bandera es global del proceso: el decode corre dentro de la cola de la GPU, pero asegúrate de restaurarla siempre (también si decode lanza una excepción) y de que el envoltorio sea compatible con el de perf_log (que también envuelve decode) en cualquier orden.",
+        "Tests sin GPU (stubs de torch y del modelo): la bandera vale True solo dentro de decode; se restaura tras una excepción; no se toca fuera de ROCm; VOICEBOX_CODEC_MIOPEN_IMMEDIATE=0 lo desactiva; el envoltorio no altera argumentos ni resultado.",
+        "Para comprobarlo antes de entregar: banco de humo con p01,p02 y --passes cold,warm,hot --miopen-db fresh. Las duraciones de los WAV deben coincidir exactamente con las de perf-loop/bench/0.5-a1 (2,64 s y 3,12 s); si cambian, el modo inmediato se está filtrando antes del muestreo."
       ],
       "files_hint": [
-        "backend/app.py (41-105)",
-        "backend/server.py (53-59)"
+        "backend/backends/pytorch_backend.py (carga del modelo, ≈ líneas 120-135)",
+        "backend/utils/perf_log.py (instrument_qwen_model: cómo se envuelve speech_tokenizer.decode)",
+        "backend/utils/miopen_env.py y backend/app.py (deshacer 84418fb)"
       ],
       "acceptance": [
-        "El Find suma menos de 3 s por frase nueva",
-        "Onda idéntica (tipo 1)"
+        "Mismos tokens que la línea base: duraciones idénticas en las 12 frases",
+        "El Find suma menos de 3 s por frase nueva (cold − warm)",
+        "No más lento que la línea base en hot",
+        "Calidad tipo 2: similitud de locutor y WER no empeoran; escucha ciega si la onda cambia (SNR < 50 dB)"
       ],
       "gate": {
         "bench": {
@@ -663,6 +670,19 @@
             "op": "<=",
             "value": 3.0,
             "label": "Find por frase nueva < 3 s (cold − warm)"
+          },
+          {
+            "metric": "compare_anchor.summary.dur_dev_max",
+            "op": "<=",
+            "value": 0.001,
+            "required": true,
+            "label": "Duraciones idénticas a la línea base: el muestreo no cambió"
+          },
+          {
+            "metric": "derived.speedup",
+            "op": ">=",
+            "value": -0.01,
+            "label": "No más lento que la línea base en hot"
           }
         ]
       },
@@ -679,6 +699,10 @@
         {
           "at": "2026-10-07T08:20:59-05:00",
           "text": "1.1-a1 FAIL: sin el solver naive, el conv1d res2net del speaker encoder no tiene algoritmo — GemmFwdRest pide 950400 B de workspace y la ruta fallback de MIOpen recibe 0, bench fatal y tests sin correr"
+        },
+        {
+          "at": "2026-10-07T12:40:37-05:00",
+          "text": "Usuario: redefinida como «GEMM solo en el decodificador del códec», calidad tipo 2 con duraciones idénticas obligatorias. Empieza deshaciendo a mano 84418fb."
         }
       ],
       "last_tag": "1.1-a1",
@@ -779,8 +803,16 @@
         ],
         "update_refs": false
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "skipped",
+      "attempts": 0,
+      "result": {
+        "kind": "skip",
+        "reason": "FIND_MODE=FAST cambiaría también el codificador de voz; la 1.1 ya quita el Find del códec",
+        "at": "2026-10-07T12:52:51-05:00",
+        "tag": null,
+        "verdict": null,
+        "by_human": true
+      }
     },
     {
       "id": "1.4",
@@ -840,11 +872,11 @@
       ],
       "title": "Puerta de la fase 1",
       "spec": [
-        "Banco completo con Find-Db vacía frente a la línea base. Puerta del plan: frase nueva = frase vista ±10 %; SNR > 50 dB en las 12 frases."
+        "Banco completo con Find-Db vacía frente a la línea base. Puerta: frase nueva = misma frase en un proceso nuevo ±10 %, Find < 3 s por frase y mismos tokens que la línea base (duraciones idénticas). Desde la 1.1 el decodificador del códec usa GEMM, así que la onda ya no es idéntica bit a bit: la calidad se juzga con locutor y WER (tipo 2) y con la escucha ciega de la 1.1."
       ],
       "acceptance": [
         "Frase nueva = misma frase en un proceso nuevo ±10 % (cold/warm)",
-        "SNR > 50 dB frente a la línea base"
+        "Mismos tokens que la línea base (duraciones idénticas); locutor y WER no empeoran"
       ],
       "gate": {
         "bench": {
@@ -874,11 +906,25 @@
             "label": "Find por frase nueva < 3 s"
           },
           {
-            "metric": "compare_anchor.summary.snr_db_min",
+            "metric": "compare_anchor.summary.dur_dev_max",
+            "op": "<=",
+            "value": 0.001,
+            "required": true,
+            "label": "Duraciones idénticas a la línea base: la fase 1 no cambia el muestreo"
+          },
+          {
+            "metric": "compare_anchor.summary.spk_cos_delta_mean",
             "op": ">=",
-            "value": 50,
-            "label": "Fase 1 solo tiene cambios de tipo 1: SNR > 50 dB frente a la línea base",
-            "required": true
+            "value": -0.01,
+            "required": true,
+            "label": "Similitud de locutor no baja más de 0,01"
+          },
+          {
+            "metric": "compare_anchor.summary.wer_delta",
+            "op": "<=",
+            "value": 0.0,
+            "required": true,
+            "label": "WER no empeora"
           }
         ]
       },
