@@ -13,13 +13,42 @@
     "phase_branches": {
       "0": "perf/qwen-f0"
     },
-    "current": "0.5",
-    "anchor": null,
-    "quality_ref": "0.4-a1",
-    "perf_ref": "0.4-a1",
-    "frozen": {},
-    "noise": {},
-    "updated_at": "2026-10-07T03:27:14-05:00"
+    "current": null,
+    "anchor": "0.5-a1",
+    "quality_ref": "0.5-a1",
+    "perf_ref": "0.5-a1",
+    "frozen": {
+      "scripts/bench_tts.py": "f110356a8b4c689e7f8b8280c13f6e4e554d0c586a6ce22fe58683047ff97813",
+      "scripts/compare_wavs.py": "e3c9f297578d3ef793babcd4b32a3520615c4cff2bc9257608ab75befb333370",
+      "scripts/bench_phrases.json": "2d3804ce351c26ed660ef443b070bd60b2121a77086ab81798df2eb609500ebe",
+      "perf-loop/tests-baseline.json": "71ebda47b204aebcfbf47384eed6d406de920e49b0d8229ae9865ed0528a480b"
+    },
+    "noise": {
+      "warm_rel_diff": 0.0004187593997442608,
+      "warm_rel_diff_max_phrase": 0.005807814149947359,
+      "hot_rel_diff": 5.367196766826295e-06,
+      "hot_rel_diff_max_phrase": 0.016683955739972306,
+      "aa_snr_db_min": 999.0,
+      "aa_spk_delta": 0.0,
+      "aa_wer_delta": 0.0
+    },
+    "updated_at": "2026-10-07T08:02:51-05:00",
+    "frozen_at": "2026-10-07T08:02:51-05:00",
+    "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
+    "anchor_wavs": {
+      "perf-loop/bench/0.5-a1/warm/p01.wav": "f88815ff534077680f47420d42cd3c2b3d1f3389f5e229ec4749132e3a9dd723",
+      "perf-loop/bench/0.5-a1/warm/p02.wav": "ee590c683e910eee8e00cf27e29757e3eb6aad3c9f7ce3920d14a6ecba9113f2",
+      "perf-loop/bench/0.5-a1/warm/p03.wav": "79c18bffe679a9698131b8f64a1e76942f978c50e180d35c478961406283c220",
+      "perf-loop/bench/0.5-a1/warm/p04.wav": "04514e43bdb472d689db50a3281fc3d121a7a8209bbb56655d706da199c517fb",
+      "perf-loop/bench/0.5-a1/warm/p05.wav": "101461c6c644421fa078ae381ea6dc313eff1807cecc4a0dbf7d480d6033af69",
+      "perf-loop/bench/0.5-a1/warm/p06.wav": "14a968a49b7a1f2ca450245fb54bc43a58ec5384e012cd257eff008f5b4aa103",
+      "perf-loop/bench/0.5-a1/warm/p07.wav": "eb238cc80d9ea15fe5f6d55e7793715de16638c0a3b9cd9f0c79c5cd606624bf",
+      "perf-loop/bench/0.5-a1/warm/p08.wav": "d4d07958109270000fa4d8860342047def17c5dd06a29c5519e2ee26faea7f25",
+      "perf-loop/bench/0.5-a1/warm/p09.wav": "2260a3cbff87316d2f7fe63e8cffe26be8f248c57bfa4f7099344f84a03e0cee",
+      "perf-loop/bench/0.5-a1/warm/p10.wav": "2fab6a9c17e961d573a9277706cd5b82bf12605111053e98e158218bbcef8f66",
+      "perf-loop/bench/0.5-a1/warm/p11.wav": "94f8a6e314a3ca13e23b6dfbaee0dcca91f485e5f6f7972d0399063be6da79ee",
+      "perf-loop/bench/0.5-a1/warm/p12.wav": "00d18d1937cdace2f9adaf31e42896463c5ff0b457b6b99eaaab3d6bed7d8346"
+    }
   },
   "phases": {
     "0": {
@@ -579,7 +608,7 @@
           "compare_schema"
         ]
       },
-      "status": "awaiting_human",
+      "status": "passed",
       "attempts": 1,
       "branch": "perf/qwen-task/0.5",
       "base": "7e0ca6a90860932a849d4374fc049fe6f2d475d4",
@@ -588,11 +617,13 @@
       "tags": [
         "0.5-a1"
       ],
-      "human": {
-        "kind": "approve",
-        "at": "2026-10-07T03:27:14-05:00",
+      "result": {
+        "kind": "pass",
+        "reason": "A/A idéntica; escenarios probados",
+        "at": "2026-10-07T08:02:51-05:00",
         "tag": "0.5-a1",
-        "message": "Métricas: hot_mean_s=15.526, warm_mean_s=32.636, cold_mean_s=76.660, rtf_hot_mean=3.062, rtf_warm_mean=7.079, talker_steps_per_s_mean=8.199, restart_overhead_s_mean=17.110, ufdb_lines_added_cold=244, ufdb_lines_added_warm=0, speedup=-0.004, speedup_pass=hot, cold_warm_ratio=2.349. Revisa la rama perf/qwen-task/0.5, perf-loop/RESULTS.md y perf-loop/bench/0.5-a1/. Al aprobar se congela el arnés (scripts/bench_*, compare_wavs, frases, tests) y esta medición pasa a ser la línea base."
+        "verdict": "needs_human",
+        "by_human": true
       }
     },
     {
