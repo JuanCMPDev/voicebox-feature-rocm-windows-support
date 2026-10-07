@@ -25,3 +25,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T00:28:55-05:00 · 0.2 empieza en perf/qwen-task/0.2-r2 (base 038ef187)
 - 2026-10-07T00:54:56-05:00 · nota 0.2: review: approve — hot reutiliza el servidor de la pasada previa sin recargar (pid y same_process_as, *_hot en summary, stage_ms_mean sigue en warm, batch con ref_pass=hot); self-test y 19 tests OK; 2 minors: pid de hot copiado (no reverificado) y sin test de fallo en pasada keep_alive/hot.
 - 2026-10-07T00:54:56-05:00 · 0.2: verificación 0.2-a2 lanzada
+- 2026-10-07T01:05:05-05:00 · 0.2 cerrada: pass
