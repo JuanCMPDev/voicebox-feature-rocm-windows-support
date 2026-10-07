@@ -19,3 +19,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-06T23:19:32-05:00 · 0.3 empieza en perf/qwen-task/0.3 (base 7e8f01a4)
 - 2026-10-07T00:21:37-05:00 · 0.0 reabierta por el usuario: Repetir la lista de tests de partida: el primer intento la registró vacía porque pytest se interrumpía al recoger backend/tests/test_profile_duplicate_names.py (import roto); config.json ya lo ignora.; 0.3 vuelve a pendiente (rama vacía perf/qwen-task/0.3 borrada)
 - 2026-10-07T00:21:37-05:00 · 0.2 reabierta por el usuario: Añadir la pasada hot de contracts.md §2: repite las frases en el mismo proceso que la pasada anterior (server.<pasada>.pid en todas, server.hot.same_process_as), summary.hot_mean_s, hot_median_s, rtf_hot_mean, ufdb_lines_added_hot, stage_ms_mean_hot y talker_steps_per_s_mean_hot (stage_ms_mean y talker_steps_per_s_mean siguen sobre warm), y el escenario batch compara con hot (ref_pass). Cúbrelo en --self-test y en backend/tests/test_bench_tts.py.
+- 2026-10-07T00:22:10-05:00 · 0.0 empieza en perf/qwen-task/0.0-r2 (base 0cf12cf2)
+- 2026-10-07T00:22:13-05:00 · 0.0: verificación 0.0-a2 lanzada
