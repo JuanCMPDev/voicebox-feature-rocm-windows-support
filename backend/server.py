@@ -93,6 +93,7 @@ try:
     # ROCm: MIOpen's Find-Db and kernel cache live in {data_dir}/cache/miopen. Set before backend.main imports
     # torch, so --data-dir is read from sys.argv here (argparse runs further down, in __main__).
     from backend.utils.miopen_db import apply_miopen_db_defaults, data_dir_from_argv
+    from backend.utils.process_priority import raise_process_priority
 
     apply_miopen_db_defaults(
         data_dir_from_argv(sys.argv[1:]) or config.get_data_dir(),
@@ -283,6 +284,11 @@ if __name__ == "__main__":
             parser.error("--parent-pid must be a positive integer")
 
         logger.info(f"Backend variant: {os.environ.get('VOICEBOX_BACKEND_VARIANT', 'cpu').upper()}")
+
+        # ROCm on Windows: above normal priority, so the thread that dispatches the TTS kernels keeps its time slices.
+        import torch  # lazy: already loaded by backend.main
+
+        raise_process_priority(os.environ.get("VOICEBOX_BACKEND_VARIANT"), hip=getattr(torch.version, "hip", None))
 
         # Register parent watchdog to start after server is fully ready
         if args.parent_pid is not None:

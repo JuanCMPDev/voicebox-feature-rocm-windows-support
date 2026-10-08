@@ -4,6 +4,7 @@ PyTorch backend implementation for TTS and STT.
 
 from typing import Any, Optional, List, Tuple
 import asyncio
+import contextlib
 import logging
 import os
 import torch
@@ -79,6 +80,19 @@ def _voice_prompt_from_cache(cached: Any, device: Any) -> list | None:
         )
         for code, embedding, x_vector_only_mode, icl_mode, ref_text in zip(*columns, strict=True)
     ]
+
+
+def _generation_mode(device: str) -> contextlib.AbstractContextManager:
+    """Context for a generation: ``torch.inference_mode()`` on a ROCm GPU, a no-op context anywhere else.
+
+    ``generate_voice_clone`` already runs under ``no_grad``; inference mode also drops the version counter and view
+    tracking autograd keeps there, CPU time on every op of a talker step bound by kernel dispatch (perf-loop plan,
+    Fase 3, task 3.3). Same kernels, same inputs, same arithmetic. CPU, CUDA, DirectML and MLX run as before.
+    """
+    variant = os.environ.get("VOICEBOX_BACKEND_VARIANT")
+    if device == "cuda" and (variant == "rocm" or getattr(torch.version, "hip", None)):
+        return torch.inference_mode()
+    return contextlib.nullcontext()
 
 
 class PyTorchTTSBackend:
@@ -314,12 +328,13 @@ class PyTorchTTSBackend:
 
             # See _create_prompt_sync comment — inference runs with the
             # process's default HF_HUB_OFFLINE state (issue #462).
-            wavs, sample_rate = self.model.generate_voice_clone(
-                text=text,
-                voice_clone_prompt=voice_prompt,
-                language=LANGUAGE_CODE_TO_NAME.get(language, "auto"),
-                instruct=instruct,
-            )
+            with _generation_mode(self.device):
+                wavs, sample_rate = self.model.generate_voice_clone(
+                    text=text,
+                    voice_clone_prompt=voice_prompt,
+                    language=LANGUAGE_CODE_TO_NAME.get(language, "auto"),
+                    instruct=instruct,
+                )
             return wavs[0], sample_rate
 
         # Run blocking inference in thread pool to avoid blocking event loop

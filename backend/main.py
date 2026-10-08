@@ -11,6 +11,7 @@ import uvicorn
 from .app import app  # noqa: F401 -- re-export for uvicorn "backend.main:app"
 from . import config, database
 from .utils.miopen_db import apply_miopen_db_defaults
+from .utils.process_priority import raise_process_priority
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="voicebox backend server")
@@ -46,6 +47,8 @@ if __name__ == "__main__":
         os.environ.get("VOICEBOX_BACKEND_VARIANT"),
         hip=getattr(torch.version, "hip", None),
     )
+    # ROCm on Windows: above normal priority, as server.py does for the packaged binary.
+    raise_process_priority(os.environ.get("VOICEBOX_BACKEND_VARIANT"), hip=getattr(torch.version, "hip", None))
 
     database.init_db()
 

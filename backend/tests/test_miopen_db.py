@@ -22,7 +22,7 @@ import pytest
 import uvicorn
 
 from backend import config, database
-from backend.utils import miopen_db
+from backend.utils import miopen_db, process_priority
 
 _BACKEND = Path(__file__).resolve().parents[1]
 _HIP = "7.2.53211-158bd99533"
@@ -212,6 +212,8 @@ def _run_dev_main(monkeypatch, argv: list[str], hip: str | None) -> dict:
     monkeypatch.delitem(sys.modules, "backend.main", raising=False)
     monkeypatch.setattr(uvicorn, "run", fake_uvicorn_run)
     monkeypatch.setattr(database, "init_db", lambda: None)
+    # main.py also raises the process priority on Windows with ROCm (test_process_priority.py); not this process's.
+    monkeypatch.setattr(process_priority, "set_above_normal_priority", lambda: None)
     monkeypatch.setattr(sys, "argv", ["main.py", *argv])
     runpy.run_module("backend.main", run_name="__main__")
     assert seen, "main.py did not reach uvicorn.run"
