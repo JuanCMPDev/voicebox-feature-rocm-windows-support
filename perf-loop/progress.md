@@ -114,3 +114,6 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T00:46:33-05:00 · nota 3.3: review: approve — prioridad ABOVE_NORMAL vía ctypes solo en Windows+ROCm (main.py y server.py, warning si falla) e inference_mode solo en generate_voice_clone en ROCm GPU; tokens y RNG idénticos en tests; 1 minor (línea de docstring de 192 caracteres en process_priority.py)
 - 2026-10-08T00:46:33-05:00 · 3.3: verificación 3.3-a1 lanzada
 - 2026-10-08T00:55:38-05:00 · 3.3 cerrada: pass
+- 2026-10-08T00:55:54-05:00 · 3.7 empieza en perf/qwen-task/3.7 (base c13573a9)
+- 2026-10-08T00:57:18-05:00 · nota 3.7: review: approve — noop: env_checks de 0.5-a1 y 3.3-a1 ya dan attn_implementation=sdpa en modelo y talker (torch 2.9.1+rocm7.2.1, aotriton_v2.dll presente); el modelo usa ALL_ATTENTION_FUNCTIONS[sdpa]; sin diff
+- 2026-10-08T00:57:18-05:00 · 3.7 cerrada: noop — SDPA ya activo: perf-loop/bench/0.5-a1/bench.json env_checks (líneas 42-43) y 3.3-a1 (líneas 41-42) dan attn_implementation y attn_implementation_talker = sdpa con torch 2.9.1+rocm7.2.1; profile-p01.json (líneas 16-19) marca sdpa en talker y code_predictor; aotriton_v2.dll presente en torch/lib. Forzar attn_implementation=sdpa no cambiaría nada.

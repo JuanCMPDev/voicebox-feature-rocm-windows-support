@@ -35,7 +35,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T00:55:38-05:00",
+    "updated_at": "2026-10-08T00:57:18-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1678,8 +1678,25 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "passed",
+      "attempts": 0,
+      "branch": "perf/qwen-task/3.7",
+      "base": "c13573a920ab68a8a1dfc836080c893a15e24147",
+      "started_at": "2026-10-08T00:55:54-05:00",
+      "notes": [
+        {
+          "at": "2026-10-08T00:57:18-05:00",
+          "text": "review: approve — noop: env_checks de 0.5-a1 y 3.3-a1 ya dan attn_implementation=sdpa en modelo y talker (torch 2.9.1+rocm7.2.1, aotriton_v2.dll presente); el modelo usa ALL_ATTENTION_FUNCTIONS[sdpa]; sin diff"
+        }
+      ],
+      "result": {
+        "kind": "noop",
+        "reason": "SDPA ya activo: perf-loop/bench/0.5-a1/bench.json env_checks (líneas 42-43) y 3.3-a1 (líneas 41-42) dan attn_implementation y attn_implementation_talker = sdpa con torch 2.9.1+rocm7.2.1; profile-p01.json (líneas 16-19) marca sdpa en talker y code_predictor; aotriton_v2.dll presente en torch/lib. Forzar attn_implementation=sdpa no cambiaría nada.",
+        "at": "2026-10-08T00:57:18-05:00",
+        "tag": null,
+        "verdict": null,
+        "by_human": false
+      }
     },
     {
       "id": "3.4",
