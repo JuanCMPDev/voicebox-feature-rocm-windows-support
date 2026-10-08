@@ -122,3 +122,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T01:46:08-05:00 · 3.4: verificación 3.4-a1 lanzada
 - 2026-10-08T02:00:13-05:00 · nota 3.4: FAIL 3.4-a1: speedup 0,9 por ciento frente al 5 exigido, WER +0,022 y duración un 13 por ciento fuera de tolerancia. El paso del talker lo limita la CPU desde 3.2 y 3.3, TunableOp no lo acelera y el cambio de kernel altera la onda
 - 2026-10-08T02:00:16-05:00 · 3.4 cerrada: reject — TunableOp no acelera: speedup 0,9 por ciento frente al 5 exigido (hot 5,73 s, 13,2 pasos por segundo), con WER +0,022 y desviación de duración del 13 por ciento. El paso lo limita la CPU, no los GEMM
+- 2026-10-08T02:00:32-05:00 · 3.6 empieza en perf/qwen-task/3.6 (base 388d9874)
+- 2026-10-08T02:38:58-05:00 · 3.6: verificación 3.6-a1 lanzada
