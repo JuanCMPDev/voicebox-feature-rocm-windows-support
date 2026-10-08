@@ -16,10 +16,10 @@
       "2": "perf/qwen-f2",
       "3": "perf/qwen-f3"
     },
-    "current": "3.5b",
+    "current": null,
     "anchor": "0.5-a1",
-    "quality_ref": "3.3-a1",
-    "perf_ref": "3.3-a1",
+    "quality_ref": "3.5b-a1",
+    "perf_ref": "3.5b-a1",
     "frozen": {
       "scripts/bench_tts.py": "f110356a8b4c689e7f8b8280c13f6e4e554d0c586a6ce22fe58683047ff97813",
       "scripts/compare_wavs.py": "e3c9f297578d3ef793babcd4b32a3520615c4cff2bc9257608ab75befb333370",
@@ -36,7 +36,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T07:04:59-05:00",
+    "updated_at": "2026-10-08T07:14:25-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1971,7 +1971,7 @@
           }
         ]
       },
-      "status": "in_progress",
+      "status": "passed",
       "attempts": 1,
       "start_approved": true,
       "branch": "perf/qwen-task/3.5b",
@@ -1980,7 +1980,21 @@
       "last_tag": "3.5b-a1",
       "tags": [
         "3.5b-a1"
-      ]
+      ],
+      "notes": [
+        {
+          "at": "2026-10-08T07:05:04-05:00",
+          "text": "review: approve — captura el frame de lote 1 del bucle de la 3.2 como CUDAGraph al cargar y lo libera al descargar. Lote 2 o más, otros planes y fallos van al bucle. Solo ROCm, desactivable con VOICEBOX_QWEN_CP_GRAPH=0. 2 minor: release() limpia los workspaces hipBLAS de todo el proceso y puede correr fuera de la cola de GPU desde /models/unload (carrera estrecha, no listada en riesgos). Se integró la variante B (sample_with_loop con DynamicCache) en lugar de la A de la ficha (StaticCache de 16 huecos y máscaras 4D), justificada con medidas en la nota"
+        }
+      ],
+      "result": {
+        "kind": "pass",
+        "reason": "",
+        "at": "2026-10-08T07:14:25-05:00",
+        "tag": "3.5b-a1",
+        "verdict": "pass",
+        "by_human": false
+      }
     },
     {
       "id": "3.G",
