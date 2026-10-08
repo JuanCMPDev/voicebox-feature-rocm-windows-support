@@ -1425,7 +1425,7 @@
           }
         ]
       },
-      "status": "blocked",
+      "status": "in_progress",
       "attempts": 1,
       "branch": "perf/qwen-task/2.G",
       "base": "f1533a9f30abd114afcc9de41f7349558f23c9e7",
@@ -1434,11 +1434,17 @@
       "tags": [
         "2.G-a1"
       ],
-      "result": {
-        "kind": "blocked",
-        "reason": "rechazada por el usuario: Talker a 6,8 pasos/s por bajadas de frecuencia; se repite tras los ajustes de energía de la 4.1",
-        "at": "2026-10-07T22:16:00-05:00"
-      }
+      "notes": [
+        {
+          "at": "2026-10-07T22:16:00-05:00",
+          "text": "reintento tras: rechazada por el usuario: Talker a 6,8 pasos/s por bajadas de frecuencia; se repite tras los ajustes de energía de la 4.1"
+        }
+      ],
+      "extra_attempts": 2,
+      "consumed_tags": [
+        "2.G-a1"
+      ],
+      "resume_hint": "verify"
     },
     {
       "id": "3.1",
