@@ -143,3 +143,9 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T09:41:21-05:00 · 3.G cerrada: pass — A/B: base preferida 2/6, cambio 1, iguales 3
 - 2026-10-08T09:41:24-05:00 · Fase 3 cerrada; empieza la fase 4: Entorno del PC y vía alternativa
 - 2026-10-08T09:41:34-05:00 · Rama de fase perf/qwen-f4 creada desde perf/qwen-f3
+- 2026-10-08T09:41:34-05:00 · 4.2 empieza en perf/qwen-task/4.2 (base 1f3f822f)
+- 2026-10-08T09:56:26-05:00 · nota 4.2: implementer: en esta GPU torch 2.9.1+rocm7.2.1 (Windows) ignora la opción: con PYTORCH_HIP_ALLOC_CONF=expandable_segments:True avisa 'expandable_segments not supported on this platform' (c10/hip/HIPAllocatorConfig.h:36) y dos tensores de 64 MiB dan 2 segmentos y 128 MiB reservados, igual que sin la variable (también con PYTORCH_ALLOC_CONF). Además torch avisa al salir 'PYTORCH_HIP_ALLOC_CONF is deprecated, use PYTORCH_ALLOC_CONF'. Se espera resultado neutro en el banco.
+- 2026-10-08T10:01:01-05:00 · nota 4.2: review: approve - en alcance, solo ROCm con setdefault, respeta config del usuario. Minor: docstring atribuye mal la prioridad de PYTORCH_ALLOC_CONF en el asignador HIP
+- 2026-10-08T10:01:03-05:00 · 4.2: verificación 4.2-a1 lanzada
+- 2026-10-08T10:10:29-05:00 · nota 4.2: FAIL por velocidad (-7.1 pct, hot 4.770 s): torch 2.9.1+rocm7.2.1 en Windows ignora expandable_segments (not supported on this platform), efecto nulo
+- 2026-10-08T10:10:31-05:00 · 4.2 cerrada: reject — Neutro: torch 2.9.1+rocm7.2.1 en Windows ignora expandable_segments (not supported on this platform). Speedup -7.1 pct frente a 3.G-a1, sin mejora que corregir en codigo
