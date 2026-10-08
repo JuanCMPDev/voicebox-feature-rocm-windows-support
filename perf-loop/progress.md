@@ -96,3 +96,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T21:33:35-05:00 · 2.G espera decisión humana (approve)
 - 2026-10-07T22:16:00-05:00 · 2.G bloqueada: rechazada por el usuario: Talker a 6,8 pasos/s por bajadas de frecuencia; se repite tras los ajustes de energía de la 4.1
 - 2026-10-07T22:16:00-05:00 · 2.G: el usuario concede 2 intentos más
+- 2026-10-07T22:16:14-05:00 · 2.G: verificación 2.G-a2 lanzada
