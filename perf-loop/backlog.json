@@ -37,7 +37,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T13:04:05-05:00",
+    "updated_at": "2026-10-08T13:07:46-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -2351,8 +2351,16 @@
       "acceptance": [
         "Decisión registrada"
       ],
-      "status": "pending",
-      "attempts": 0
+      "status": "skipped",
+      "attempts": 0,
+      "result": {
+        "kind": "skip",
+        "reason": "RTF 0,87 en Windows; no compensa cambiar de stack",
+        "at": "2026-10-08T13:07:46-05:00",
+        "tag": null,
+        "verdict": null,
+        "by_human": true
+      }
     }
   ]
 }

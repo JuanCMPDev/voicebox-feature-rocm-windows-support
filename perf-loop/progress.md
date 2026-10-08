@@ -160,3 +160,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T12:53:55-05:00 · nota 4.4: review: approve - sin cambios de codigo desde a0e27de, diff completo en alcance, notas coherentes con el humo limpio, 15.70 pasos/s hot con arreglo y 16.11 sin el. Minors: seccion Puntos del codigo de las notas desfasada respecto a a0e27de, y el script de coste del procesador sin ejecutar
 - 2026-10-08T12:53:57-05:00 · 4.4: verificación 4.4-a2 lanzada
 - 2026-10-08T13:04:05-05:00 · 4.4 espera decisión humana (approve)
+- 2026-10-08T13:07:46-05:00 · 4.3 cerrada: skip — RTF 0,87 en Windows; no compensa cambiar de stack
