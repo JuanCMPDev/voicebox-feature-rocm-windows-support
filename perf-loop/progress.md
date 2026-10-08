@@ -106,3 +106,6 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T23:37:58-05:00 · nota 3.1: review: approve — solo medida, sin cambios de producción; cifras cuadran con artefactos; 4 minor (reproducibilidad p08 vs p01, medidas sueltas sin artefacto, prioridad no registrada, 33 vs 35 lecturas)
 - 2026-10-07T23:38:00-05:00 · 3.1: verificación 3.1-a1 lanzada
 - 2026-10-07T23:38:04-05:00 · 3.1 cerrada: pass
+- 2026-10-07T23:38:24-05:00 · 3.2 empieza en perf/qwen-task/3.2 (base ce6d3fe7)
+- 2026-10-08T00:12:56-05:00 · nota 3.2: review: approve — bucle propio de code_predictor solo en ROCm con fallback a HF generate; tokens y RNG idénticos a HF en tests CPU y en GPU (p01/p08); 1 minor (clave de caché por id(generation_config) no ve ediciones in-place)
+- 2026-10-08T00:12:56-05:00 · 3.2: verificación 3.2-a1 lanzada
