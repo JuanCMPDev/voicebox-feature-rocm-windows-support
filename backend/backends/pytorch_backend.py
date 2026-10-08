@@ -9,7 +9,7 @@ import os
 import torch
 import numpy as np
 
-from ..utils import miopen_codec, perf_log, qwen_warmup
+from ..utils import miopen_codec, perf_log, qwen_code_predictor, qwen_warmup
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +188,15 @@ class PyTorchTTSBackend:
             getattr(torch.version, "hip", None),
         ):
             miopen_codec.use_immediate_mode_for_codec(self.model)
+
+        # ROCm: the code predictor samples each frame's 15 codebook tokens in a loop without host reads instead of HF
+        # generate (same forwards, same sampling). Before the warm-up, so the warm-up runs the loop generation uses.
+        if qwen_code_predictor.loop_enabled(
+            self.device,
+            os.environ.get("VOICEBOX_BACKEND_VARIANT"),
+            getattr(torch.version, "hip", None),
+        ):
+            qwen_code_predictor.install(self.model)
 
         # ROCm: pay the first decode of each codec length and the first talker step here, while a generation that
         # triggered the load still shows loading_model. After the immediate-mode wrapper, so the warm-up decodes run
