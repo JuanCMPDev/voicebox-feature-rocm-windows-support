@@ -197,8 +197,10 @@ class PyTorchTTSBackend:
         logger.info("TTS model %s loaded successfully", model_size)
 
         # Every device: the talker's stopping rule holds back a phrase's first likely codec_eos and rules out chance
-        # ones, so phrases do not end before the last word does (perf-loop task 4.4; generate and generate_batch pass
-        # it each row's guard). Before the warm-up, so the warm-up runs the talker as generation does.
+        # ones, so phrases do not end before the last word does (perf-loop task 4.4; generate and generate_batch also
+        # pass the non-streaming prompt and each row's guard). Before the warm-up, so the warm-up's talker step already
+        # runs the rule's processor and pays its kernels' first launch; the warm-up keeps its own prompt, without
+        # guards.
         if qwen_end_fix.end_fix_enabled():
             qwen_end_fix.install(self.model)
 

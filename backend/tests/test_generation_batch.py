@@ -25,7 +25,7 @@ from backend.database import Base, Generation as DBGeneration, VoiceProfile as D
 from backend.models import GenerationRequest
 from backend.routes import generations
 from backend.services import generation, task_queue
-from backend.utils import audio as audio_utils, chunked_tts, perf_log
+from backend.utils import audio as audio_utils, chunked_tts, perf_log, qwen_end_fix
 
 _HIP = "7.2.53211-158bd99533"
 _SAMPLE_RATE = 24000
@@ -672,6 +672,7 @@ class TestPyTorchBackend:
     @pytest.fixture(autouse=True)
     def _no_variant(self, monkeypatch):
         monkeypatch.delenv("VOICEBOX_BACKEND_VARIANT", raising=False)
+        monkeypatch.delenv(qwen_end_fix.END_FIX_ENV, raising=False)
 
     @pytest.mark.parametrize(
         ("hip", "variant", "device", "expected"),

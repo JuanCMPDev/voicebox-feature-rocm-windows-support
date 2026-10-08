@@ -12,6 +12,7 @@ Usage:
 
 import asyncio
 import contextlib
+import math
 import sys
 import types
 from typing import Any
@@ -89,6 +90,29 @@ class TestGuardFrames:
     @pytest.mark.parametrize("items", [[], [_item(10, "ab")] * 3, {"ref_code": [1]}, None])
     def test_items_that_do_not_match_the_texts_give_no_guards(self, items):
         assert qwen_end_fix.guard_frames(["hola", "adiós"], items) == [0, 0]
+
+    @pytest.mark.parametrize(
+        ("frames", "ref_chars"),
+        [
+            (330, 47),  # transcript of a tenth of the audio: 7 frames per character
+            (330, 120),  # 2.75 frames per character: e.g. a Chinese transcript, one syllable per character
+            (100, 1000),  # transcript ten times longer than the audio
+        ],
+    )
+    def test_reference_rhythm_out_of_range_gives_no_guard(self, frames, ref_chars):
+        low, high = qwen_end_fix.REF_RATE_RANGE
+        assert not low <= frames / ref_chars <= high
+        good = _item(330, "x" * 473)
+        assert qwen_end_fix.guard_frames(["y" * 44, "y" * 44], [good, _item(frames, "x" * ref_chars)]) == [47, 0]
+
+    @pytest.mark.parametrize("rate", qwen_end_fix.REF_RATE_RANGE)
+    def test_range_is_inclusive(self, rate):
+        item = _item(int(rate * 100), "x" * 100)
+        assert qwen_end_fix.guard_frames(["y" * 10], [item], ratio=1.0) == [math.ceil(rate * 10)]
+
+    def test_bench_profile_is_in_range(self):
+        low, high = qwen_end_fix.REF_RATE_RANGE
+        assert low < 330 / 473 < high
 
 
 class TestPhraseEnd:
@@ -187,20 +211,41 @@ class TestEosHoldProcessor:
         assert torch.equal(result, expected)
         assert result.dtype == torch.float32
 
-    @pytest.mark.parametrize(("temperature", "top_k"), [(None, None), (0.9, None), (0.9, 2), (0.7, 3), (1.3, 50)])
-    def test_probability_is_hfs_sampling_distribution(self, temperature, top_k):
-        """softmax after HF's temperature and top-k warpers, as the talker samples from."""
-        from transformers.generation.logits_process import TemperatureLogitsWarper, TopKLogitsWarper
+    @pytest.mark.parametrize(
+        ("temperature", "top_k", "top_p"),
+        [
+            (None, None, None),
+            (0.9, None, None),
+            (0.9, 2, None),
+            (0.7, 3, None),
+            (1.3, 50, None),
+            (0.9, 50, 1.0),  # the talker's settings: HF adds no top-p warper at 1.0
+            (0.9, None, 0.8),
+            (0.9, 3, 0.5),
+            (1.0, None, 0.3),
+        ],
+    )
+    def test_probability_is_hfs_sampling_distribution(self, temperature, top_k, top_p):
+        """softmax after HF's temperature, top-k and top-p warpers, as the talker samples from."""
+        from transformers.generation.logits_process import (
+            TemperatureLogitsWarper,
+            TopKLogitsWarper,
+            TopPLogitsWarper,
+        )
 
         generator = torch.Generator().manual_seed(7)
         scores = torch.randn(4, _VOCAB, generator=generator) * 2
-        processor = qwen_end_fix.EosHoldProcessor(_EOS, temperature=temperature, top_k=top_k)
+        before = scores.clone()
+        processor = qwen_end_fix.EosHoldProcessor(_EOS, temperature=temperature, top_k=top_k, top_p=top_p)
         expected = scores.clone()
-        if temperature is not None:
+        if temperature is not None and temperature != 1.0:
             expected = TemperatureLogitsWarper(temperature)(None, expected)
         if top_k is not None:
             expected = TopKLogitsWarper(top_k=top_k)(None, expected)
+        if top_p is not None and top_p < 1.0:
+            expected = TopPLogitsWarper(top_p=top_p)(None, expected)
         torch.testing.assert_close(processor.eos_probability(scores), torch.softmax(expected, -1)[:, _EOS])
+        assert torch.equal(scores, before)
 
     def test_top_k_can_make_eos_likely(self):
         """EOS second best of eight: below 0.2 over the whole vocabulary, above it among the top two."""
@@ -210,6 +255,18 @@ class TestEosHoldProcessor:
         top_two = qwen_end_fix.EosHoldProcessor(_EOS, hold_frames=1, likely=0.2, top_k=2)
         assert self._removed(plain(_ids(1), scores.clone())) == [False]
         assert self._removed(top_two(_ids(1), scores.clone())) == [True]
+
+    def test_top_p_can_make_eos_likely(self):
+        """Same scores: EOS is 0.169 of the vocabulary; top-p 0.7 drops four of the six smallest, EOS gets 0.225."""
+        scores = torch.zeros(1, _VOCAB)
+        scores[0, 0], scores[0, _EOS] = 2.0, 1.0
+        plain = qwen_end_fix.EosHoldProcessor(_EOS, hold_frames=1, likely=0.2)
+        nucleus = qwen_end_fix.EosHoldProcessor(_EOS, hold_frames=1, likely=0.2, top_p=0.7)
+        e = math.e
+        torch.testing.assert_close(plain.eos_probability(scores), torch.tensor([e / (e * e + e + 6)]))
+        torch.testing.assert_close(nucleus.eos_probability(scores), torch.tensor([e / (e * e + e + 2)]))
+        assert self._removed(plain(_ids(1), scores.clone())) == [False]
+        assert self._removed(nucleus(_ids(1), scores.clone())) == [True]
 
     def test_no_hold_and_no_guard_changes_nothing(self):
         processor = qwen_end_fix.EosHoldProcessor(_EOS, hold_frames=0, likely=0.1)
@@ -236,7 +293,14 @@ def _qwen_model(talker: Any, eos: Any = _EOS) -> Any:
 
 
 # What Qwen3TTSForConditionalGeneration.generate passes to the talker, with the 1.7B Base model's settings.
-_TALKER_KWARGS = {"max_new_tokens": 8192, "min_new_tokens": 2, "do_sample": True, "top_k": 50, "temperature": 0.9}
+_TALKER_KWARGS = {
+    "max_new_tokens": 8192,
+    "min_new_tokens": 2,
+    "do_sample": True,
+    "top_k": 50,
+    "top_p": 1.0,
+    "temperature": 0.9,
+}
 
 
 class TestInstall:
@@ -253,8 +317,15 @@ class TestInstall:
         assert isinstance(processor, qwen_end_fix.EosHoldProcessor)
         assert processor.eos_token_id == _EOS
         assert (processor.hold_frames, processor.likely) == (qwen_end_fix.HOLD_FRAMES, qwen_end_fix.EOS_LIKELY)
-        assert (processor.temperature, processor.top_k) == (0.9, 50)
+        assert (processor.temperature, processor.top_k, processor.top_p) == (0.9, 50, 1.0)
         assert processor.guards is None
+
+    def test_processor_takes_the_calls_top_p(self):
+        talker = FakeTalker()
+        qwen_end_fix.install(_qwen_model(talker))
+        talker.generate(**{**_TALKER_KWARGS, "top_p": 0.8})
+        (processor,) = talker.calls[0]["logits_processor"]
+        assert processor.top_p == 0.8
 
     def test_guards_come_from_the_phrase_end_call(self):
         talker = FakeTalker()
@@ -281,7 +352,7 @@ class TestInstall:
         qwen_end_fix.install(_qwen_model(talker))
         talker.generate(**{**_TALKER_KWARGS, "do_sample": False})
         (processor,) = talker.calls[0]["logits_processor"]
-        assert (processor.temperature, processor.top_k) == (None, None)
+        assert (processor.temperature, processor.top_k, processor.top_p) == (None, None, None)
 
     def test_each_call_gets_its_own_processor(self):
         talker = FakeTalker()

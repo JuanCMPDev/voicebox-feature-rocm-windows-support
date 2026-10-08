@@ -15,7 +15,8 @@ stopping rule; ``VOICEBOX_QWEN_END_FIX=0`` turns both off and leaves generation 
   under the sampling distribution), so the model generates that frame itself, and, while the row is shorter than
   :data:`GUARD_RATIO` times the frames the reference's own rhythm gives its text, at the steps where it is not likely,
   so the phrase cannot end on a chance draw. Past that length unlikely ``codec_eos`` is allowed again, as before, so a
-  row that never makes it likely still ends.
+  row that never makes it likely still ends. A reference whose rhythm falls outside :data:`REF_RATE_RANGE` (a
+  transcript that does not match its audio, or a script with far fewer characters per second) gives no guard.
 
 Nothing else changes: same weights, same sampling settings (``top_k``, ``top_p``, ``temperature``,
 ``repetition_penalty``, ``subtalker_*``, ``max_new_tokens``, which still bounds every row), same reference.
@@ -41,6 +42,11 @@ HOLD_FRAMES = 1
 EOS_LIKELY = 0.1
 # Length, in frames the reference's rhythm gives the text, up to which an unlikely codec_eos is removed.
 GUARD_RATIO = 1.5
+# Reference rhythms (frames of ref_code per character of ref_text) a guard is computed from: 0.25 is 50 characters a
+# second (12.5 frames a second), 2.5 is 5, pauses included. The bench profile is 0.70. Outside, ref_text cannot be the
+# transcript of the audio at a speaking pace an alphabetic script has (wrong or partial transcript, or a script such as
+# Chinese with one syllable per character), so the guard could be several times the text's length: no guard then.
+REF_RATE_RANGE = (0.25, 2.5)
 # Extra generate_voice_clone arguments.
 GENERATE_KWARGS: dict[str, Any] = {"non_streaming_mode": True}
 
@@ -58,7 +64,8 @@ def guard_frames(texts: Sequence[str], items: Sequence[Any], ratio: float = GUAR
 
     ``ratio`` times the frames the text gets at the reference's rhythm: frames of the item's ``ref_code`` per
     character of its ``ref_text``, times the characters of the text. 0 (no guard) for a row whose item has no
-    reference codes or transcript. A single item serves every text, as ``generate_voice_clone`` does.
+    reference codes or transcript, or a rhythm outside :data:`REF_RATE_RANGE`. A single item serves every text, as
+    ``generate_voice_clone`` does.
 
     Args:
         texts: Texts of one ``generate_voice_clone`` call, in order.
@@ -79,6 +86,10 @@ def guard_frames(texts: Sequence[str], items: Sequence[Any], ratio: float = GUAR
         ref_text = getattr(item, "ref_text", None)
         shape = getattr(getattr(item, "ref_code", None), "shape", None)
         if not isinstance(ref_text, str) or not ref_text or not shape or not isinstance(text, str):
+            guards.append(0)
+            continue
+        low, high = REF_RATE_RANGE
+        if not low <= int(shape[0]) / len(ref_text) <= high:
             guards.append(0)
             continue
         guards.append(math.ceil(ratio * int(shape[0]) * len(text) / len(ref_text)))
@@ -120,8 +131,9 @@ class EosHoldProcessor:
     """Logits processor for the talker's ``codec_eos``: holds back the first likely one, rules out chance ones.
 
     At every step it computes, per row, the probability of ``eos_token_id`` under the distribution the talker samples
-    from (``scores`` after the earlier processors, divided by ``temperature`` and cut to the ``top_k`` best, as HF's
-    warpers do next). It sets ``codec_eos`` to ``-inf`` in a row:
+    from: ``scores`` after the earlier processors, through the temperature, top-k and top-p warpers HF applies next
+    (HF's own classes, built with the conditions HF builds them with; the talker sets no other warper). It sets
+    ``codec_eos`` to ``-inf`` in a row:
 
     - where it is likely (probability at least ``likely``), at the first ``hold_frames`` such steps of the row;
     - where it is not likely, while the row has generated fewer frames than its entry in ``guards``.
@@ -134,6 +146,7 @@ class EosHoldProcessor:
         likely: Probability from which ``codec_eos`` counts as likely.
         temperature: Sampling temperature, or None when the talker does not sample.
         top_k: Sampling top-k, or None when the talker does not sample or keeps every token.
+        top_p: Sampling top-p, or None when the talker does not sample (1.0 keeps every token, as HF does).
         guards: Per row, frames generated before which an unlikely ``codec_eos`` is removed; None (or a length
             other than the batch's) for no guard.
     """
@@ -145,28 +158,41 @@ class EosHoldProcessor:
         likely: float = EOS_LIKELY,
         temperature: float | None = None,
         top_k: int | None = None,
+        top_p: float | None = None,
         guards: Sequence[int] | None = None,
     ):
+        from transformers.generation.logits_process import (  # lazy: heavy import
+            TemperatureLogitsWarper,
+            TopKLogitsWarper,
+            TopPLogitsWarper,
+        )
+
         self.eos_token_id = eos_token_id
         self.hold_frames = hold_frames
         self.likely = likely
         self.temperature = temperature
         self.top_k = top_k
+        self.top_p = top_p
         self.guards = None if guards is None else [int(g) for g in guards]
         self.held: Any = None  # per-row count of held steps, created at the first call
         self._guard: Any = None  # guards as a tensor on the scores' device
         self._start: int | None = None  # input_ids length at the first call: the first generated frame
+        # GenerationMixin._get_logits_processor's conditions, with one beam (min_tokens_to_keep=1).
+        self._warpers: list[Any] = []
+        if temperature is not None and temperature != 1.0:
+            self._warpers.append(TemperatureLogitsWarper(temperature))
+        if top_k is not None and top_k != 0:
+            self._warpers.append(TopKLogitsWarper(top_k=top_k, min_tokens_to_keep=1))
+        if top_p is not None and top_p < 1.0:
+            self._warpers.append(TopPLogitsWarper(top_p=top_p, min_tokens_to_keep=1))
 
     def eos_probability(self, scores: Any) -> Any:
         """Per-row probability of ``codec_eos`` under the sampling distribution, (batch,) float32."""
         import torch  # lazy: heavy import
 
         logits = scores.float()
-        if self.temperature is not None and self.temperature != 1.0:
-            logits = logits / self.temperature
-        if self.top_k is not None and 0 < self.top_k < logits.shape[-1]:
-            kth = torch.topk(logits, self.top_k, dim=-1).values[..., -1:]
-            logits = logits.masked_fill(logits < kth, float("-inf"))
+        for warper in self._warpers:  # each returns a new tensor; ``scores`` is left as it is
+            logits = warper(None, logits)
         return torch.softmax(logits, dim=-1)[:, self.eos_token_id]
 
     def __call__(self, input_ids: Any, scores: Any) -> Any:
@@ -191,9 +217,9 @@ def install(model: Any) -> bool:
     """Make ``model``'s talker ``generate`` run with an :class:`EosHoldProcessor`. Installing twice is a no-op.
 
     The processor goes after the logits processors the call already has; HF runs it after its own (repetition
-    penalty, suppressed tokens, minimum length) and before temperature and top-k. Its temperature and top-k are the
-    call's, so it sees the distribution the talker samples from; its guards are the ones :func:`phrase_end` set on
-    this thread (none outside it). The original ``generate`` stays available as ``generate.original``.
+    penalty, suppressed tokens, minimum length) and before temperature, top-k and top-p. Those three are the call's,
+    so it sees the distribution the talker samples from; its guards are the ones :func:`phrase_end` set on this
+    thread (none outside it). The original ``generate`` stays available as ``generate.original``.
 
     Args:
         model: Loaded ``Qwen3TTSModel``.
@@ -223,6 +249,7 @@ def install(model: Any) -> bool:
             likely=EOS_LIKELY,
             temperature=kwargs.get("temperature") if sampling else None,
             top_k=kwargs.get("top_k") if sampling else None,
+            top_p=kwargs.get("top_p") if sampling else None,
             guards=current_guards(),
         )
         kwargs["logits_processor"] = LogitsProcessorList([*(kwargs.get("logits_processor") or []), processor])
