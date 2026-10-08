@@ -142,3 +142,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T07:18:55-05:00 · 3.G espera decisión humana (ab)
 - 2026-10-08T09:41:21-05:00 · 3.G cerrada: pass — A/B: base preferida 2/6, cambio 1, iguales 3
 - 2026-10-08T09:41:24-05:00 · Fase 3 cerrada; empieza la fase 4: Entorno del PC y vía alternativa
+- 2026-10-08T09:41:34-05:00 · Rama de fase perf/qwen-f4 creada desde perf/qwen-f3
