@@ -100,3 +100,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T22:22:19-05:00 · 2.G espera decisión humana (approve)
 - 2026-10-07T22:27:20-05:00 · 2.G cerrada: pass — Con ajustes de energía: hot 7,25 s, talker estable 9,6-10 pasos/s
 - 2026-10-07T22:27:20-05:00 · 4.1 cerrada: skip — Ajustes aplicados antes de la fase 3; efecto medido en 2.G-a1 frente a 2.G-a2: hot 10,13 a 7,25 s
+- 2026-10-07T22:27:23-05:00 · Fase 2 cerrada; empieza la fase 3: Acelerar el talker (experimentos)
