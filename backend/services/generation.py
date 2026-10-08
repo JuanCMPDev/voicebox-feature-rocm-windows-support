@@ -12,19 +12,32 @@ Mode differences:
                     No effects, no version creation.
   - "regenerate" : re-runs with seed=None for variation.  Creates a new
                     version with an auto-incremented "take-N" label.
+
+With ``VOICEBOX_QWEN_BATCH=1`` the queue may generate several queued jobs in
+one model call (see :func:`batch_key`); each job still runs its own
+``run_generation`` for everything else.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import traceback
-from typing import Literal, Optional
+from collections.abc import Hashable
+from dataclasses import dataclass
+from typing import Any, Literal, Optional
 
 from .. import config
-from . import history, profiles
+from . import history, profiles, task_queue
 from ..database import get_db
 from ..utils import perf_log
 from ..utils.tasks import get_task_manager
+
+logger = logging.getLogger(__name__)
+
+QWEN_BATCH_ENV = "VOICEBOX_QWEN_BATCH"
+_ENABLED_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 async def run_generation(
@@ -87,7 +100,14 @@ async def run_generation(
         if crossfade_ms is not None:
             gen_kwargs["crossfade_ms"] = crossfade_ms
 
-        audio, sample_rate = await generate_chunked(tts_model, text, voice_prompt, **gen_kwargs)
+        batch = task_queue.current_batch()
+        if batch is None:
+            audio, sample_rate = await generate_chunked(tts_model, text, voice_prompt, **gen_kwargs)
+        else:
+            audio, sample_rate = await batch.generate(
+                _BatchRequest(generation_id, tts_model, text, voice_prompt, gen_kwargs),
+                _generate_together,
+            )
 
         # --- Normalize (generate and regenerate always; retry skips) -----
         if normalize or mode == "regenerate":
@@ -171,6 +191,107 @@ def _notify_speak_end(generation_id: str, *, status: str) -> None:
     except Exception:
         # Never let event pub/sub break generation completion.
         pass
+
+
+def batch_key(
+    *,
+    engine: str,
+    model_size: str | None,
+    profile_id: str,
+    language: str,
+    instruct: str | None,
+    text: str,
+    max_chunk_chars: int | None = None,
+) -> Hashable | None:
+    """Key under which the queue may generate this job together with other queued jobs, or None to run it alone.
+
+    Opt-in with ``VOICEBOX_QWEN_BATCH=1`` (perf-loop plan, Fase 3.6): only for the ``qwen`` engine on a backend whose
+    ``supports_batch()`` is true (a ROCm GPU) and for a text that fits in one chunk. Jobs batch with jobs of the same
+    engine, model size, profile, language and instruct.
+
+    Batched jobs do not reproduce their seeds: the batch samples every sequence from one RNG stream seeded with its
+    first job's seed (see :func:`_generate_together`), so the same text and seed give a different audio than alone.
+    """
+    if os.environ.get(QWEN_BATCH_ENV, "").strip().lower() not in _ENABLED_VALUES:
+        return None
+    if engine != "qwen":
+        return None
+
+    from ..backends import get_tts_backend_for_engine
+    from ..utils.chunked_tts import DEFAULT_MAX_CHUNK_CHARS, split_text_into_chunks
+
+    try:
+        supports_batch = getattr(get_tts_backend_for_engine(engine), "supports_batch", None)
+        if not callable(supports_batch) or not supports_batch():
+            return None
+        chunk_chars = DEFAULT_MAX_CHUNK_CHARS if max_chunk_chars is None else max_chunk_chars
+        if len(split_text_into_chunks(text, chunk_chars)) != 1:
+            return None
+    except Exception:
+        # Batching only saves time: a job it cannot vet runs alone, the request never fails over it.
+        logger.exception("Could not decide whether the generation can be batched, running it alone")
+        return None
+    return (engine, model_size, profile_id, language, instruct)
+
+
+@dataclass
+class _BatchRequest:
+    """One batched job's generation, with the arguments its own ``generate_chunked`` call would take."""
+
+    generation_id: str
+    backend: Any
+    text: str
+    voice_prompt: Any
+    gen_kwargs: dict
+
+
+async def _generate_together(requests: list[_BatchRequest]) -> list[tuple[Any, int] | Exception]:
+    """Generate the requests of one batch of queued jobs; returns each one's ``(audio, sample_rate)`` or error.
+
+    Several requests take one ``generate_batch`` call of their backend. It is seeded with the first job's seed (none if
+    that job has none) and samples all the sequences from that single RNG stream, on left-padded inputs, so a job's
+    audio is not the one its seed gives alone: the other jobs' seeds are not used and the draws depend on the batch.
+
+    A single request (the rest of the batch was cancelled or failed before generating), a backend without
+    ``generate_batch`` or a failed batch call fall back to each job's own ``generate_chunked`` call, the same call and
+    seed as without batching.
+    """
+    from ..utils.chunked_tts import generate_chunked
+
+    if len(requests) > 1:
+        first = requests[0]
+        generate_batch = getattr(first.backend, "generate_batch", None)
+        if callable(generate_batch):
+            # The talker and codec lines of a batch cover every job in it, so none of them gets them alone.
+            token = perf_log.set_generation_id(",".join(request.generation_id for request in requests))
+            try:
+                audios, sample_rate = await generate_batch(
+                    [request.text for request in requests],
+                    [request.voice_prompt for request in requests],
+                    language=first.gen_kwargs["language"],
+                    seed=first.gen_kwargs["seed"],
+                    instruct=first.gen_kwargs["instruct"],
+                )
+            except Exception:
+                logger.exception("Batch of %d generations failed, generating each one alone", len(requests))
+            else:
+                trim_fn = first.gen_kwargs.get("trim_fn")
+                return [(audio if trim_fn is None else trim_fn(audio, sample_rate), sample_rate) for audio in audios]
+            finally:
+                perf_log.reset_generation_id(token)
+
+    outcomes: list[tuple[Any, int] | Exception] = []
+    for request in requests:
+        token = perf_log.set_generation_id(request.generation_id)
+        try:
+            outcomes.append(
+                await generate_chunked(request.backend, request.text, request.voice_prompt, **request.gen_kwargs)
+            )
+        except Exception as error:
+            outcomes.append(error)
+        finally:
+            perf_log.reset_generation_id(token)
+    return outcomes
 
 
 def _save_generate(

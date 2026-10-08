@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import config, models
 from ..services import history, personality, profiles, tts
 from ..database import Generation as DBGeneration, VoiceProfile as DBVoiceProfile, get_db
-from ..services.generation import run_generation
+from ..services.generation import batch_key, run_generation
 from ..services.task_queue import cancel_generation as cancel_generation_job, enqueue_generation
 from ..utils.audio import load_audio
 from ..utils.tasks import get_task_manager
@@ -139,7 +139,16 @@ async def generate_speech(
             mode="generate",
             max_chunk_chars=data.max_chunk_chars,
             crossfade_ms=data.crossfade_ms,
-        )
+        ),
+        batch_key=batch_key(
+            engine=engine,
+            model_size=model_size,
+            profile_id=data.profile_id,
+            language=data.language,
+            instruct=data.instruct,
+            text=text,
+            max_chunk_chars=data.max_chunk_chars,
+        ),
     )
 
     return generation
@@ -181,7 +190,15 @@ async def retry_generation(generation_id: str, db: Session = Depends(get_db)):
             seed=gen.seed,
             instruct=gen.instruct,
             mode="retry",
-        )
+        ),
+        batch_key=batch_key(
+            engine=gen.engine or "qwen",
+            model_size=gen.model_size or "1.7B",
+            profile_id=gen.profile_id,
+            language=gen.language,
+            instruct=gen.instruct,
+            text=gen.text,
+        ),
     )
 
     return models.GenerationResponse.model_validate(gen)
@@ -226,7 +243,15 @@ async def regenerate_generation(generation_id: str, db: Session = Depends(get_db
             instruct=gen.instruct,
             mode="regenerate",
             version_id=version_id,
-        )
+        ),
+        batch_key=batch_key(
+            engine=gen.engine or "qwen",
+            model_size=gen.model_size or "1.7B",
+            profile_id=gen.profile_id,
+            language=gen.language,
+            instruct=gen.instruct,
+            text=gen.text,
+        ),
     )
 
     return models.GenerationResponse.model_validate(gen)

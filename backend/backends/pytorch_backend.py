@@ -342,6 +342,61 @@ class PyTorchTTSBackend:
 
         return audio, sample_rate
 
+    def supports_batch(self) -> bool:
+        """Whether queued jobs may be batched into :meth:`generate_batch`: on a ROCm GPU only (perf-loop plan, 3.6)."""
+        variant = os.environ.get("VOICEBOX_BACKEND_VARIANT")
+        return self.device == "cuda" and (variant == "rocm" or bool(getattr(torch.version, "hip", None)))
+
+    async def generate_batch(
+        self,
+        texts: list[str],
+        voice_prompts: list[list],
+        language: str = "en",
+        seed: int | None = None,
+        instruct: str | None = None,
+    ) -> tuple[list[np.ndarray], int]:
+        """Generate several texts in one ``generate_voice_clone`` call, one voice prompt per text.
+
+        The talker steps every sequence at once, so the per-step overhead is paid once for the whole batch. The
+        sampling settings are the model's, as in :meth:`generate`, but the draws are not: every sequence samples from
+        one RNG stream seeded once with ``seed``, and the prompts are left-padded to a common length, so a text's
+        audio differs from what :meth:`generate` gives for the same text and seed.
+
+        Args:
+            texts: Texts to synthesize.
+            voice_prompts: For each text, the voice prompt :meth:`create_voice_prompt` returned (one item).
+            language: Language code shared by every text.
+            seed: Seed for the batch's RNG stream, or None to leave the RNG as it is.
+            instruct: Instruction shared by every text (the Base model ignores it).
+
+        Returns:
+            Tuple of (audio arrays aligned with ``texts``, sample_rate).
+
+        Raises:
+            ValueError: If a voice prompt is not a single prompt item.
+        """
+        items = []
+        for prompt in voice_prompts:
+            if not isinstance(prompt, list) or len(prompt) != 1:
+                raise ValueError("generate_batch takes one voice prompt item per text")
+            items.extend(prompt)
+
+        await self.load_model_async(None)
+
+        def _generate_batch_sync():
+            if seed is not None:
+                manual_seed(seed, self.device)
+            with _generation_mode(self.device):
+                wavs, sample_rate = self.model.generate_voice_clone(
+                    text=list(texts),
+                    voice_clone_prompt=items,
+                    language=LANGUAGE_CODE_TO_NAME.get(language, "auto"),
+                    instruct=instruct,
+                )
+            return list(wavs), sample_rate
+
+        return await asyncio.to_thread(_generate_batch_sync)
+
 
 class PyTorchSTTBackend:
     """PyTorch-based STT backend using Whisper."""
