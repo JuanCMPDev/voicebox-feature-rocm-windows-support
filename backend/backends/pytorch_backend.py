@@ -212,6 +212,15 @@ class PyTorchTTSBackend:
         ):
             qwen_code_predictor.install(self.model)
 
+        # ROCm: the loop's batch-1 frame captured once as a HIP graph, which each talker step then replays (same
+        # kernels, one launch). Before the warm-up, so its talker step already replays the graph.
+        if qwen_code_predictor.graph_enabled(
+            self.device,
+            os.environ.get("VOICEBOX_BACKEND_VARIANT"),
+            getattr(torch.version, "hip", None),
+        ):
+            qwen_code_predictor.capture_graph(self.model)
+
         # ROCm: pay the first decode of each codec length and the first talker step here, while a generation that
         # triggered the load still shows loading_model. After the immediate-mode wrapper, so the warm-up decodes run
         # as generation does; before VBPERF, so it logs no talker/codec lines.
@@ -229,6 +238,9 @@ class PyTorchTTSBackend:
     def unload_model(self):
         """Unload the model to free memory."""
         if self.model is not None:
+            # The code predictor graph (ROCm) holds its own memory pool; free it now rather than when the GC breaks
+            # the model's reference cycles, so empty_device_cache below returns that memory too.
+            qwen_code_predictor.release_graph(self.model)
             del self.model
             self.model = None
             self._current_model_size = None
