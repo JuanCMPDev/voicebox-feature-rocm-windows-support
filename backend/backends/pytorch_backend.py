@@ -10,7 +10,7 @@ import os
 import torch
 import numpy as np
 
-from ..utils import miopen_codec, perf_log, qwen_code_predictor, qwen_warmup
+from ..utils import miopen_codec, perf_log, qwen_code_predictor, qwen_end_fix, qwen_warmup
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +196,12 @@ class PyTorchTTSBackend:
         self.model_size = model_size
         logger.info("TTS model %s loaded successfully", model_size)
 
+        # Every device: the talker's stopping rule holds back a phrase's first likely codec_eos and rules out chance
+        # ones, so phrases do not end before the last word does (perf-loop task 4.4; generate and generate_batch pass
+        # it each row's guard). Before the warm-up, so the warm-up runs the talker as generation does.
+        if qwen_end_fix.end_fix_enabled():
+            qwen_end_fix.install(self.model)
+
         if miopen_codec.codec_immediate_enabled(
             self.device,
             os.environ.get("VOICEBOX_BACKEND_VARIANT"),
@@ -340,12 +346,13 @@ class PyTorchTTSBackend:
 
             # See _create_prompt_sync comment — inference runs with the
             # process's default HF_HUB_OFFLINE state (issue #462).
-            with _generation_mode(self.device):
+            with _generation_mode(self.device), qwen_end_fix.phrase_end([text], voice_prompt) as end_kwargs:
                 wavs, sample_rate = self.model.generate_voice_clone(
                     text=text,
                     voice_clone_prompt=voice_prompt,
                     language=LANGUAGE_CODE_TO_NAME.get(language, "auto"),
                     instruct=instruct,
+                    **end_kwargs,
                 )
             return wavs[0], sample_rate
 
@@ -398,12 +405,13 @@ class PyTorchTTSBackend:
         def _generate_batch_sync():
             if seed is not None:
                 manual_seed(seed, self.device)
-            with _generation_mode(self.device):
+            with _generation_mode(self.device), qwen_end_fix.phrase_end(list(texts), items) as end_kwargs:
                 wavs, sample_rate = self.model.generate_voice_clone(
                     text=list(texts),
                     voice_clone_prompt=items,
                     language=LANGUAGE_CODE_TO_NAME.get(language, "auto"),
                     instruct=instruct,
+                    **end_kwargs,
                 )
             return list(wavs), sample_rate
 

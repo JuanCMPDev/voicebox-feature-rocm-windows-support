@@ -711,6 +711,7 @@ class TestPyTorchBackend:
                 "voice_clone_prompt": ["item a", "item b"],
                 "language": "spanish",
                 "instruct": None,
+                "non_streaming_mode": True,  # perf-loop task 4.4 (backend/utils/qwen_end_fix.py)
                 "inference_mode": True,
             }
         ]
