@@ -102,3 +102,6 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T22:27:20-05:00 · 4.1 cerrada: skip — Ajustes aplicados antes de la fase 3; efecto medido en 2.G-a1 frente a 2.G-a2: hot 10,13 a 7,25 s
 - 2026-10-07T22:27:23-05:00 · Fase 2 cerrada; empieza la fase 3: Acelerar el talker (experimentos)
 - 2026-10-07T22:27:35-05:00 · Rama de fase perf/qwen-f3 creada desde perf/qwen-f2
+- 2026-10-07T22:27:35-05:00 · 3.1 empieza en perf/qwen-task/3.1 (base 88ecdc01)
+- 2026-10-07T23:37:58-05:00 · nota 3.1: review: approve — solo medida, sin cambios de producción; cifras cuadran con artefactos; 4 minor (reproducibilidad p08 vs p01, medidas sueltas sin artefacto, prioridad no registrada, 33 vs 35 lecturas)
+- 2026-10-07T23:38:00-05:00 · 3.1: verificación 3.1-a1 lanzada

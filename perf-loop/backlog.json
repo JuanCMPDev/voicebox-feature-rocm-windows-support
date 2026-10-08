@@ -13,9 +13,10 @@
     "phase_branches": {
       "0": "perf/qwen-f0",
       "1": "perf/qwen-f1",
-      "2": "perf/qwen-f2"
+      "2": "perf/qwen-f2",
+      "3": "perf/qwen-f3"
     },
-    "current": null,
+    "current": "3.1",
     "anchor": "0.5-a1",
     "quality_ref": "2.G-a2",
     "perf_ref": "2.G-a2",
@@ -34,7 +35,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T22:27:35-05:00",
+    "updated_at": "2026-10-07T23:38:00-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1482,8 +1483,21 @@
         ],
         "update_refs": false
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/3.1",
+      "base": "88ecdc01c63392358e0ff85ea67d7a11c5cf8197",
+      "started_at": "2026-10-07T22:27:35-05:00",
+      "notes": [
+        {
+          "at": "2026-10-07T23:37:58-05:00",
+          "text": "review: approve — solo medida, sin cambios de producción; cifras cuadran con artefactos; 4 minor (reproducibilidad p08 vs p01, medidas sueltas sin artefacto, prioridad no registrada, 33 vs 35 lecturas)"
+        }
+      ],
+      "last_tag": "3.1-a1",
+      "tags": [
+        "3.1-a1"
+      ]
     },
     {
       "id": "3.2",
