@@ -16,7 +16,7 @@
       "2": "perf/qwen-f2",
       "3": "perf/qwen-f3"
     },
-    "current": null,
+    "current": "3.5a",
     "anchor": "0.5-a1",
     "quality_ref": "3.3-a1",
     "perf_ref": "3.3-a1",
@@ -24,7 +24,8 @@
       "scripts/bench_tts.py": "f110356a8b4c689e7f8b8280c13f6e4e554d0c586a6ce22fe58683047ff97813",
       "scripts/compare_wavs.py": "e3c9f297578d3ef793babcd4b32a3520615c4cff2bc9257608ab75befb333370",
       "scripts/bench_phrases.json": "2d3804ce351c26ed660ef443b070bd60b2121a77086ab81798df2eb609500ebe",
-      "perf-loop/tests-baseline.json": "71ebda47b204aebcfbf47384eed6d406de920e49b0d8229ae9865ed0528a480b"
+      "perf-loop/tests-baseline.json": "71ebda47b204aebcfbf47384eed6d406de920e49b0d8229ae9865ed0528a480b",
+      "perf-loop/checks/cola_final.py": "f6eb3e4ca295a0e053c2971cbb71f737311f62244eca039f6792022e4aebeff9"
     },
     "noise": {
       "warm_rel_diff": 0.0004187593997442608,
@@ -35,7 +36,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T05:45:31-05:00",
+    "updated_at": "2026-10-08T06:03:51-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -75,7 +76,8 @@
     "scripts/compare_wavs.py",
     "scripts/bench_phrases.json",
     "scripts/bench_lib/",
-    "perf-loop/tests-baseline.json"
+    "perf-loop/tests-baseline.json",
+    "perf-loop/checks/cola_final.py"
   ],
   "constraints": [
     "Ningún cambio altera el modelo, sus entradas ni el muestreo. Fuera de alcance (plan, «Qué no hacer»): el modelo 0.6B; recortar o resamplear la referencia; cuantizar el talker o pasarlo a FP16; tocar max_new_tokens, top_k, top_p, temperature o repetition_penalty; decodificar con menos contexto de referencia del que recibe hoy; torch.backends.cudnn.benchmark = True; bajar max_chunk_chars.",
@@ -1881,8 +1883,21 @@
         },
         "update_refs": false
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/3.5a",
+      "base": "5c0ea4c2de2e7b5458478175911383465cfdb711",
+      "started_at": "2026-10-08T05:45:47-05:00",
+      "notes": [
+        {
+          "at": "2026-10-08T06:03:49-05:00",
+          "text": "review: approve — solo script de prueba, tests sin GPU y nota, no toca producción. Veredicto viable: el grafo del code predictor baja de 68,3 a 31,3 ms por frame con 480 de 480 códigos iguales, el backbone no gana. 3 minor: prefill sin máscara causal fuera de SDPA, la prueba va más allá del mínimo de la ficha y una etiqueta ambigua de la capa 0 en la nota"
+        }
+      ],
+      "last_tag": "3.5a-a1",
+      "tags": [
+        "3.5a-a1"
+      ]
     },
     {
       "id": "3.5b",
@@ -2087,6 +2102,91 @@
             "op": ">=",
             "value": 0.05,
             "label": "Al menos 5 % más rápido que el último estado aceptado"
+          }
+        ]
+      },
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "id": "4.4",
+      "phase": 4,
+      "kind": "experiment",
+      "quality_type": null,
+      "depends_on": [
+        "4.2"
+      ],
+      "plan_first": true,
+      "max_attempts": 3,
+      "title": "Frases cortas cortadas al final: el talker cierra el audio antes de acabar la última palabra",
+      "spec": [
+        "Decisión del usuario (8 oct), tras escuchar el banco de la 3.6: p01 («…algo nublada.») y p03 («…el valle despacio.») terminan cortadas. Ya pasaba en la línea base 0.5-a1, con la misma onda en todas las mediciones posteriores: no lo causó el loop. perf-loop/checks/cola_final.py lo mide (silencio final por frase, tramos de 10 ms por debajo de -40 dBFS): en 0.5-a1 las frases cortas p01-p05 dejan 20-90 ms (p03 aún suena en el último tramo) y las largas p06-p12 entre 100 y 850 ms; las tomas de p02 y p04 del lote de la 3.6, que el usuario dio por buenas al escucharlas, dejan 230 y 430 ms.",
+        "Ya descartado: no es trim_tts_output (solo se aplica a Chatterbox), ni el decodificador del códec (causal; devuelve exactamente tramas × 1920 muestras), ni el recorte del prefijo de referencia en generate_voice_clone (proporcional y exacto), ni la muestra de referencia del perfil (termina con 1 s de silencio). Hipótesis: el talker emite codec_eos antes de terminar la última sílaba en las frases cortas.",
+        "Excepción aprobada por el usuario a la primera restricción del backlog: esta tarea puede cambiar las entradas del talker y su regla de parada, nada más. Sigue prohibido tocar top_k, top_p, temperature, repetition_penalty, subtalker_*, max_new_tokens y la referencia. Tampoco vale rellenar con silencio, aplicar fundidos ni recortar el audio generado: el arreglo tiene que conseguir que el modelo termine la palabra. El paquete qwen_tts del venv está congelado: el cambio va en backend/ (envoltorio o parche al cargar el modelo, como hizo la 3.2 con el code_predictor en backend/utils/qwen_code_predictor.py).",
+        "PRIMERO diagnostica, sin commit de código: con el perfil del banco y las semillas de scripts/bench_phrases.json, para p01-p05 registra en qué paso sale codec_eos, su probabilidad en los 5 pasos anteriores y el número de tramas generadas frente a lo que predice el ritmo de la referencia (tramas de ref_code por carácter de ref_text). Apúntalo en perf-loop/notes/4.4.md junto con lo que decidas.",
+        "Hipótesis, de la más barata a la más cara: (a) non_streaming_mode=True en generate_voice_clone. Es el valor por defecto de generate_voice_design y generate_custom_voice; en clonación el defecto es False (streaming de texto simulado; ver generate_icl_prompt). (b) Si (a) no basta o cambia la voz: no permitir codec_eos hasta un mínimo de pasos proporcional al texto de cada fila, estimado con el ritmo de la propia referencia y con margen (p. ej. 0,8×), con un LogitsProcessor o equivalente en el talker; nunca más allá de max_new_tokens. Si ninguna funciona, documenta por qué en las notas y cierra como rechazo.",
+        "Igual en generate y generate_batch (backend/backends/pytorch_backend.py), fila a fila en el lote. Va en el backend PyTorch de Qwen en cualquier dispositivo (es un arreglo de calidad, no de entorno); MLX no se toca. VOICEBOX_QWEN_END_FIX=0 lo desactiva y deja el comportamiento actual.",
+        "Tests sin GPU: la bandera; que generate y generate_batch aplican el ajuste; y, si usas (b), que el procesador anula codec_eos antes del mínimo y no después, fila a fila.",
+        "Antes de entregar: banco de humo con p01,p03 y --passes warm,hot, y después `python perf-loop/checks/cola_final.py --tag <tag del humo>`. Las dos frases deben dejar ≥ 100 ms de silencio final. No puedes escuchar: el usuario escuchará los finales en la puerta."
+      ],
+      "files_hint": [
+        "backend/backends/pytorch_backend.py (generate, generate_batch, carga del modelo)",
+        "backend/utils/qwen_code_predictor.py (patrón de parche al cargar el modelo)",
+        "qwen_tts/core/models/modeling_qwen3_tts.py del venv, solo lectura: generate_icl_prompt y generate (≈ 1968-2292)",
+        "qwen_tts/inference/qwen3_tts_model.py del venv, solo lectura: generate_voice_clone (≈ 470-633)"
+      ],
+      "acceptance": [
+        "≥ 100 ms de silencio final en todas las frases (warm, hot y lote)",
+        "Locutor y WER no empeoran frente a la línea base",
+        "Escucha del usuario: finales de p01-p05 completos"
+      ],
+      "gate": {
+        "bench": {
+          "phrases": "all",
+          "passes": [
+            "warm",
+            "hot"
+          ],
+          "miopen_db": "persist",
+          "scenario": "batch",
+          "concurrent": 4,
+          "env": {
+            "VOICEBOX_QWEN_BATCH": "1"
+          }
+        },
+        "compare": [
+          "prev",
+          "anchor"
+        ],
+        "selftest": [
+          [
+            "perf-loop/checks/cola_final.py",
+            "--min-ms",
+            "100"
+          ]
+        ],
+        "tests": true,
+        "human": "approve",
+        "checks": [
+          {
+            "metric": "compare_anchor.summary.spk_cos_delta_mean",
+            "op": ">=",
+            "value": -0.01,
+            "required": true,
+            "label": "Similitud de locutor media no baja más de 0,01 frente a la línea base"
+          },
+          {
+            "metric": "compare_anchor.summary.wer_delta",
+            "op": "<=",
+            "value": 0.01,
+            "required": true,
+            "label": "WER no empeora frente a la línea base (tolerancia: una palabra en una frase)"
+          },
+          {
+            "metric": "bench.summary.talker_steps_per_s_mean_hot",
+            "op": ">=",
+            "value": 12.0,
+            "label": "El talker no pierde más de ~8 % de velocidad por paso (13,1 pasos/s en la 3.6)"
           }
         ]
       },

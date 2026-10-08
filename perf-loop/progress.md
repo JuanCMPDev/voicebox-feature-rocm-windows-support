@@ -127,3 +127,6 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T02:39:18-05:00 · nota 3.6: review: approve — lote opcional con VOICEBOX_QWEN_BATCH solo en ROCm y textos de un trozo. Sin la variable el camino es idéntico. Cola, cancelación y fallback revisados, tests sin GPU pasan. 3 minor: un trabajo compatible adelanta a otro incompatible encolado antes sin documentarlo, líneas VBPERF del lote con gen_id compuesto, y ningún log indica qué generaciones fueron en lote con seed no reproducible
 - 2026-10-08T02:48:38-05:00 · 3.6 espera decisión humana (approve)
 - 2026-10-08T05:45:31-05:00 · 3.6 cerrada: pass — Lote OK; el corte final de p01/p03 viene de la linea base, no del lote
+- 2026-10-08T05:45:47-05:00 · 3.5a empieza en perf/qwen-task/3.5a (base 5c0ea4c2)
+- 2026-10-08T06:03:49-05:00 · nota 3.5a: review: approve — solo script de prueba, tests sin GPU y nota, no toca producción. Veredicto viable: el grafo del code predictor baja de 68,3 a 31,3 ms por frame con 480 de 480 códigos iguales, el backbone no gana. 3 minor: prefill sin máscara causal fuera de SDPA, la prueba va más allá del mínimo de la ficha y una etiqueta ambigua de la capa 0 en la nota
+- 2026-10-08T06:03:51-05:00 · 3.5a: verificación 3.5a-a1 lanzada
