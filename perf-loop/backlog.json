@@ -37,7 +37,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T12:18:46-05:00",
+    "updated_at": "2026-10-08T12:35:26-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -2285,7 +2285,7 @@
           }
         ]
       },
-      "status": "blocked",
+      "status": "in_progress",
       "attempts": 1,
       "branch": "perf/qwen-task/4.4",
       "base": "d798e9f201fbffbe1239962ee0b3721505db8ae0",
@@ -2306,17 +2306,21 @@
         {
           "at": "2026-10-08T12:18:35-05:00",
           "text": "review: approve - segundo intento, corrige los cuatro menores, guarda acotada a 0.25-2.5 tramas por caracter, p de EOS con los warpers de HF incluido top_p, sin lecturas al host por paso. Minor: proc_cost_4_4.py sin ejecutar, margen de velocidad estrecho por el prefill mas largo"
+        },
+        {
+          "at": "2026-10-08T12:35:26-05:00",
+          "text": "reintento tras: Entorno: FortniteClient-Win64-Shipping.exe abierto desde las 11:19 ocupa unos 6.7 de 12 hilos y la GPU. Con el juego abierto el talker da unos 10.5 pasos/s con o sin el arreglo (A/B del implementador con las opciones del banco oficial), asi que la puerta de 15.5 falla sea cual sea el codigo. El codigo del segundo intento (a0e27de) esta revisado y aprobado. Cerrar Fortnite y Epic Games Launcher y reanudar para verificar 4.4-a2"
         }
       ],
       "last_tag": "4.4-a1",
       "tags": [
         "4.4-a1"
       ],
-      "result": {
-        "kind": "blocked",
-        "reason": "Entorno: FortniteClient-Win64-Shipping.exe abierto desde las 11:19 ocupa unos 6.7 de 12 hilos y la GPU. Con el juego abierto el talker da unos 10.5 pasos/s con o sin el arreglo (A/B del implementador con las opciones del banco oficial), asi que la puerta de 15.5 falla sea cual sea el codigo. El codigo del segundo intento (a0e27de) esta revisado y aprobado. Cerrar Fortnite y Epic Games Launcher y reanudar para verificar 4.4-a2",
-        "at": "2026-10-08T12:18:46-05:00"
-      }
+      "extra_attempts": 3,
+      "consumed_tags": [
+        "4.4-a1"
+      ],
+      "resume_hint": "implement"
     },
     {
       "id": "4.3",
