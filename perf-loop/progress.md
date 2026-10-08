@@ -85,3 +85,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T18:14:08-05:00 · 2.4 empieza en perf/qwen-task/2.4 (base 1282c3aa)
 - 2026-10-07T18:54:37-05:00 · nota 2.4: review: approve — asyncio.Lock FIFO compartido entre el worker de la cola y /transcribe (transcripción espera como máximo una generación); filas nacen 'queued' y cancel/cleanup/_force_fail las tratan como activas; 1 minor (la tabla puede quedarse en 'En cola…' si el historial se pide antes de pasar a generating, p. ej. prompt sin caché); fuera de alcance: MCP transcribe y dictado usan Whisper sin lock
 - 2026-10-07T18:54:38-05:00 · 2.4: verificación 2.4-a1 lanzada
+- 2026-10-07T19:02:28-05:00 · 2.4 cerrada: pass
