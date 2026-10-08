@@ -16,7 +16,7 @@
       "2": "perf/qwen-f2",
       "3": "perf/qwen-f3"
     },
-    "current": null,
+    "current": "3.5b",
     "anchor": "0.5-a1",
     "quality_ref": "3.3-a1",
     "perf_ref": "3.3-a1",
@@ -36,7 +36,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T06:16:09-05:00",
+    "updated_at": "2026-10-08T07:04:59-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1971,9 +1971,16 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 0,
-      "start_approved": true
+      "status": "in_progress",
+      "attempts": 1,
+      "start_approved": true,
+      "branch": "perf/qwen-task/3.5b",
+      "base": "9fed6a3d722db5230c801f9bba597af2b53c7a08",
+      "started_at": "2026-10-08T06:16:22-05:00",
+      "last_tag": "3.5b-a1",
+      "tags": [
+        "3.5b-a1"
+      ]
     },
     {
       "id": "3.G",

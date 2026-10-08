@@ -133,3 +133,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T06:03:54-05:00 · 3.5a cerrada: pass
 - 2026-10-08T06:04:00-05:00 · 3.5b espera visto bueno para empezar
 - 2026-10-08T06:16:09-05:00 · 3.5b: el usuario aprueba empezar
+- 2026-10-08T06:16:22-05:00 · 3.5b empieza en perf/qwen-task/3.5b (base 9fed6a3d)
+- 2026-10-08T07:04:59-05:00 · 3.5b: verificación 3.5b-a1 lanzada
