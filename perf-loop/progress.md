@@ -113,3 +113,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T00:22:35-05:00 · 3.3 empieza en perf/qwen-task/3.3 (base f5090031)
 - 2026-10-08T00:46:33-05:00 · nota 3.3: review: approve — prioridad ABOVE_NORMAL vía ctypes solo en Windows+ROCm (main.py y server.py, warning si falla) e inference_mode solo en generate_voice_clone en ROCm GPU; tokens y RNG idénticos en tests; 1 minor (línea de docstring de 192 caracteres en process_priority.py)
 - 2026-10-08T00:46:33-05:00 · 3.3: verificación 3.3-a1 lanzada
+- 2026-10-08T00:55:38-05:00 · 3.3 cerrada: pass
