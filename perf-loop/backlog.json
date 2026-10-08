@@ -37,7 +37,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T12:35:26-05:00",
+    "updated_at": "2026-10-08T12:53:57-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -2286,7 +2286,7 @@
         ]
       },
       "status": "in_progress",
-      "attempts": 1,
+      "attempts": 2,
       "branch": "perf/qwen-task/4.4",
       "base": "d798e9f201fbffbe1239962ee0b3721505db8ae0",
       "started_at": "2026-10-08T10:10:49-05:00",
@@ -2310,11 +2310,16 @@
         {
           "at": "2026-10-08T12:35:26-05:00",
           "text": "reintento tras: Entorno: FortniteClient-Win64-Shipping.exe abierto desde las 11:19 ocupa unos 6.7 de 12 hilos y la GPU. Con el juego abierto el talker da unos 10.5 pasos/s con o sin el arreglo (A/B del implementador con las opciones del banco oficial), asi que la puerta de 15.5 falla sea cual sea el codigo. El codigo del segundo intento (a0e27de) esta revisado y aprobado. Cerrar Fortnite y Epic Games Launcher y reanudar para verificar 4.4-a2"
+        },
+        {
+          "at": "2026-10-08T12:53:55-05:00",
+          "text": "review: approve - sin cambios de codigo desde a0e27de, diff completo en alcance, notas coherentes con el humo limpio, 15.70 pasos/s hot con arreglo y 16.11 sin el. Minors: seccion Puntos del codigo de las notas desfasada respecto a a0e27de, y el script de coste del procesador sin ejecutar"
         }
       ],
-      "last_tag": "4.4-a1",
+      "last_tag": "4.4-a2",
       "tags": [
-        "4.4-a1"
+        "4.4-a1",
+        "4.4-a2"
       ],
       "extra_attempts": 3,
       "consumed_tags": [
