@@ -1914,8 +1914,16 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "skipped",
+      "attempts": 0,
+      "result": {
+        "kind": "skip",
+        "reason": "Ajustes aplicados antes de la fase 3; efecto medido en 2.G-a1 frente a 2.G-a2: hot 10,13 a 7,25 s",
+        "at": "2026-10-07T22:27:20-05:00",
+        "tag": null,
+        "verdict": null,
+        "by_human": true
+      }
     },
     {
       "id": "4.2",
