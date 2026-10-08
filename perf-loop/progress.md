@@ -149,3 +149,7 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T10:01:03-05:00 · 4.2: verificación 4.2-a1 lanzada
 - 2026-10-08T10:10:29-05:00 · nota 4.2: FAIL por velocidad (-7.1 pct, hot 4.770 s): torch 2.9.1+rocm7.2.1 en Windows ignora expandable_segments (not supported on this platform), efecto nulo
 - 2026-10-08T10:10:31-05:00 · 4.2 cerrada: reject — Neutro: torch 2.9.1+rocm7.2.1 en Windows ignora expandable_segments (not supported on this platform). Speedup -7.1 pct frente a 3.G-a1, sin mejora que corregir en codigo
+- 2026-10-08T10:10:49-05:00 · 4.4 empieza en perf/qwen-task/4.4 (base d798e9f2)
+- 2026-10-08T11:21:59-05:00 · nota 4.4: review: approve - en alcance, prompt no-streaming y retencion de EOS en el talker, sin tocar muestreo ni MLX
+- 2026-10-08T11:22:11-05:00 · nota 4.4: review minors: la guarda no tiene cota si el texto de referencia no casa con el audio o es otro idioma, eos_probability no modela top_p, la fixture del test de batch no limpia VOICEBOX_QWEN_END_FIX, comentario del calentamiento inexacto
+- 2026-10-08T11:22:16-05:00 · 4.4: verificación 4.4-a1 lanzada

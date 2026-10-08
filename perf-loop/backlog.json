@@ -17,7 +17,7 @@
       "3": "perf/qwen-f3",
       "4": "perf/qwen-f4"
     },
-    "current": null,
+    "current": "4.4",
     "anchor": "0.5-a1",
     "quality_ref": "3.G-a1",
     "perf_ref": "3.G-a1",
@@ -37,7 +37,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T10:10:31-05:00",
+    "updated_at": "2026-10-08T11:22:16-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -2285,8 +2285,25 @@
           }
         ]
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/4.4",
+      "base": "d798e9f201fbffbe1239962ee0b3721505db8ae0",
+      "started_at": "2026-10-08T10:10:49-05:00",
+      "notes": [
+        {
+          "at": "2026-10-08T11:21:59-05:00",
+          "text": "review: approve - en alcance, prompt no-streaming y retencion de EOS en el talker, sin tocar muestreo ni MLX"
+        },
+        {
+          "at": "2026-10-08T11:22:11-05:00",
+          "text": "review minors: la guarda no tiene cota si el texto de referencia no casa con el audio o es otro idioma, eos_probability no modela top_p, la fixture del test de batch no limpia VOICEBOX_QWEN_END_FIX, comentario del calentamiento inexacto"
+        }
+      ],
+      "last_tag": "4.4-a1",
+      "tags": [
+        "4.4-a1"
+      ]
     },
     {
       "id": "4.3",
