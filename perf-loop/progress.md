@@ -90,3 +90,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T01:45:36+00:00 · nota 2.5: Apagón durante la implementación (sin commit). Quedaron sin commitear backend/routes/health.py y backend/tests/test_health_cache_scan.py; ambos están completos sintácticamente. Revisa el diff con git diff y git status, termínalo y haz commit; no empieces de cero.
 - 2026-10-07T21:17:24-05:00 · nota 2.5: review: approve — scan_cache_dir de /health pasa a asyncio.to_thread con caché de 60 s por repo (fallos no se cachean); mismos resultados que antes (True/None/fallback a ficheros de pesos); 9 tests nuevos sin GPU; sin hallazgos; riesgo menor: la insignia 'Model Ready' puede tardar hasta 60 s tras una descarga
 - 2026-10-07T21:17:24-05:00 · 2.5: verificación 2.5-a1 lanzada
+- 2026-10-07T21:25:28-05:00 · 2.5 cerrada: pass
