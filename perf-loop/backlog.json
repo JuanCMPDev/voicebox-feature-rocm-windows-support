@@ -16,7 +16,7 @@
       "2": "perf/qwen-f2",
       "3": "perf/qwen-f3"
     },
-    "current": "3.5a",
+    "current": null,
     "anchor": "0.5-a1",
     "quality_ref": "3.3-a1",
     "perf_ref": "3.3-a1",
@@ -36,7 +36,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T06:03:51-05:00",
+    "updated_at": "2026-10-08T06:03:54-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1883,7 +1883,7 @@
         },
         "update_refs": false
       },
-      "status": "in_progress",
+      "status": "passed",
       "attempts": 1,
       "branch": "perf/qwen-task/3.5a",
       "base": "5c0ea4c2de2e7b5458478175911383465cfdb711",
@@ -1897,7 +1897,15 @@
       "last_tag": "3.5a-a1",
       "tags": [
         "3.5a-a1"
-      ]
+      ],
+      "result": {
+        "kind": "pass",
+        "reason": "",
+        "at": "2026-10-08T06:03:54-05:00",
+        "tag": "3.5a-a1",
+        "verdict": "pass",
+        "by_human": false
+      }
     },
     {
       "id": "3.5b",
