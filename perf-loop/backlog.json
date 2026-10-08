@@ -16,10 +16,10 @@
       "2": "perf/qwen-f2",
       "3": "perf/qwen-f3"
     },
-    "current": "3.G",
+    "current": null,
     "anchor": "0.5-a1",
-    "quality_ref": "3.5b-a1",
-    "perf_ref": "3.5b-a1",
+    "quality_ref": "3.G-a1",
+    "perf_ref": "3.G-a1",
     "frozen": {
       "scripts/bench_tts.py": "f110356a8b4c689e7f8b8280c13f6e4e554d0c586a6ce22fe58683047ff97813",
       "scripts/compare_wavs.py": "e3c9f297578d3ef793babcd4b32a3520615c4cff2bc9257608ab75befb333370",
@@ -36,7 +36,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T07:18:55-05:00",
+    "updated_at": "2026-10-08T09:41:21-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -2066,7 +2066,7 @@
           }
         ]
       },
-      "status": "awaiting_human",
+      "status": "passed",
       "attempts": 1,
       "branch": "perf/qwen-task/3.G",
       "base": "6e5de7f45064c425f9356f9aa7bb419981c6596d",
@@ -2075,11 +2075,13 @@
       "tags": [
         "3.G-a1"
       ],
-      "human": {
-        "kind": "ab",
-        "at": "2026-10-08T07:18:55-05:00",
+      "result": {
+        "kind": "pass",
+        "reason": "A/B: base preferida 2/6, cambio 1, iguales 3",
+        "at": "2026-10-08T09:41:21-05:00",
         "tag": "3.G-a1",
-        "page": "perf-loop/bench/3.G-a1/ab/index.html"
+        "verdict": "needs_human",
+        "by_human": true
       }
     },
     {
@@ -2248,8 +2250,8 @@
           {
             "metric": "bench.summary.talker_steps_per_s_mean_hot",
             "op": ">=",
-            "value": 12.0,
-            "label": "El talker no pierde más de ~8 % de velocidad por paso (13,1 pasos/s en la 3.6)"
+            "value": 15.5,
+            "label": "El talker no pierde más de ~7 % de velocidad por paso (16,6 pasos/s tras la 3.5b)"
           }
         ]
       },
