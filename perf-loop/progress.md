@@ -126,3 +126,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T02:38:58-05:00 · 3.6: verificación 3.6-a1 lanzada
 - 2026-10-08T02:39:18-05:00 · nota 3.6: review: approve — lote opcional con VOICEBOX_QWEN_BATCH solo en ROCm y textos de un trozo. Sin la variable el camino es idéntico. Cola, cancelación y fallback revisados, tests sin GPU pasan. 3 minor: un trabajo compatible adelanta a otro incompatible encolado antes sin documentarlo, líneas VBPERF del lote con gen_id compuesto, y ningún log indica qué generaciones fueron en lote con seed no reproducible
 - 2026-10-08T02:48:38-05:00 · 3.6 espera decisión humana (approve)
+- 2026-10-08T05:45:31-05:00 · 3.6 cerrada: pass — Lote OK; el corte final de p01/p03 viene de la linea base, no del lote

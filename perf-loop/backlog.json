@@ -16,7 +16,7 @@
       "2": "perf/qwen-f2",
       "3": "perf/qwen-f3"
     },
-    "current": "3.6",
+    "current": null,
     "anchor": "0.5-a1",
     "quality_ref": "3.3-a1",
     "perf_ref": "3.3-a1",
@@ -35,7 +35,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T02:48:38-05:00",
+    "updated_at": "2026-10-08T05:45:31-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1829,7 +1829,7 @@
           }
         ]
       },
-      "status": "awaiting_human",
+      "status": "passed",
       "attempts": 1,
       "branch": "perf/qwen-task/3.6",
       "base": "388d9874d53a17092457d2d31bfa7cdfed837003",
@@ -1844,11 +1844,13 @@
           "text": "review: approve — lote opcional con VOICEBOX_QWEN_BATCH solo en ROCm y textos de un trozo. Sin la variable el camino es idéntico. Cola, cancelación y fallback revisados, tests sin GPU pasan. 3 minor: un trabajo compatible adelanta a otro incompatible encolado antes sin documentarlo, líneas VBPERF del lote con gen_id compuesto, y ningún log indica qué generaciones fueron en lote con seed no reproducible"
         }
       ],
-      "human": {
-        "kind": "approve",
-        "at": "2026-10-08T02:48:38-05:00",
+      "result": {
+        "kind": "pass",
+        "reason": "Lote OK; el corte final de p01/p03 viene de la linea base, no del lote",
+        "at": "2026-10-08T05:45:31-05:00",
         "tag": "3.6-a1",
-        "message": "Métricas: hot_mean_s=5.769, warm_mean_s=5.783, rtf_hot_mean=1.084, rtf_warm_mean=1.090, talker_steps_per_s_mean=13.054, restart_overhead_s_mean=0.015, ufdb_lines_added_warm=0, snr_prev_min=999.000, snr_anchor_min=45.252, spk_delta_anchor=0.000, wer_delta_anchor=0.000, dur_dev_anchor=0.000, speedup=0.002, speedup_pass=hot. Revisa la rama perf/qwen-task/3.6, perf-loop/RESULTS.md y perf-loop/bench/3.6-a1/."
+        "verdict": "needs_human",
+        "by_human": true
       }
     },
     {
