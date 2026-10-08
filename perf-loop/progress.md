@@ -137,3 +137,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T07:04:59-05:00 · 3.5b: verificación 3.5b-a1 lanzada
 - 2026-10-08T07:05:04-05:00 · nota 3.5b: review: approve — captura el frame de lote 1 del bucle de la 3.2 como CUDAGraph al cargar y lo libera al descargar. Lote 2 o más, otros planes y fallos van al bucle. Solo ROCm, desactivable con VOICEBOX_QWEN_CP_GRAPH=0. 2 minor: release() limpia los workspaces hipBLAS de todo el proceso y puede correr fuera de la cola de GPU desde /models/unload (carrera estrecha, no listada en riesgos). Se integró la variante B (sample_with_loop con DynamicCache) en lugar de la A de la ficha (StaticCache de 16 
 - 2026-10-08T07:14:25-05:00 · 3.5b cerrada: pass
+- 2026-10-08T07:14:45-05:00 · 3.G empieza en perf/qwen-task/3.G (base 6e5de7f4)
+- 2026-10-08T07:14:50-05:00 · 3.G: verificación 3.G-a1 lanzada
