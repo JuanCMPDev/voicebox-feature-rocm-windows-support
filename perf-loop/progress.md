@@ -131,3 +131,5 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T06:03:49-05:00 · nota 3.5a: review: approve — solo script de prueba, tests sin GPU y nota, no toca producción. Veredicto viable: el grafo del code predictor baja de 68,3 a 31,3 ms por frame con 480 de 480 códigos iguales, el backbone no gana. 3 minor: prefill sin máscara causal fuera de SDPA, la prueba va más allá del mínimo de la ficha y una etiqueta ambigua de la capa 0 en la nota
 - 2026-10-08T06:03:51-05:00 · 3.5a: verificación 3.5a-a1 lanzada
 - 2026-10-08T06:03:54-05:00 · 3.5a cerrada: pass
+- 2026-10-08T06:04:00-05:00 · 3.5b espera visto bueno para empezar
+- 2026-10-08T06:16:09-05:00 · 3.5b: el usuario aprueba empezar

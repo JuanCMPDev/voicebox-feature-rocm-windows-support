@@ -36,7 +36,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T06:03:54-05:00",
+    "updated_at": "2026-10-08T06:16:09-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1911,26 +1911,35 @@
       "id": "3.5b",
       "phase": 3,
       "kind": "experiment",
-      "quality_type": 2,
+      "quality_type": 1,
       "requires": [
         "3.5a"
       ],
       "human_start": true,
-      "human_start_message": "Son 3–5 días de trabajo (plan, Fase 3.5). Lee perf-loop/notes/3.5a-hipgraph.md antes de decidir.",
+      "human_start_message": "Alcance reducido tras la 3.5a (decisión del usuario, 8 oct): solo el frame del code predictor en un grafo, el backbone sigue como hoy. La prueba estima −20 a −25 % en el talker con códigos idénticos. Lee perf-loop/notes/3.5a-hipgraph.md.",
       "plan_first": true,
       "max_attempts": 3,
-      "title": "Grafos HIP para el paso de decodificación",
+      "title": "Grafo HIP para el frame del code predictor",
       "spec": [
-        "Plan, Fase 3.5: KV cache estática (cache_implementation=\"static\") y captura del forward del talker y del bucle del code predictor con torch.cuda.CUDAGraph; la generación repite el grafo con entradas nuevas. Sin torch.compile (no hay Triton en Windows).",
-        "Capa propia de decodificación en pytorch_backend.py, opt-in por variable de entorno hasta que pase la puerta; con fallback automático al camino actual si la captura falla."
+        "Decisión del usuario (8 oct), tras la prueba 3.5a (perf-loop/notes/3.5a-hipgraph.md): se captura SOLO el frame del code predictor (sus 15 forwards y 15 muestreos) como un único torch.cuda.CUDAGraph. En la prueba bajó de 68,3 a 31,3 ms por frame con 480/480 códigos idénticos al bucle de la 3.2 y el mismo consumo del RNG. El backbone del talker se queda en eager con DynamicCache, como hoy: con grafo gana solo un 2 % (25,2 frente a 25,6 ms), con KV estática deja de ser idéntico (≤ 1,5 % de error en los logits) y cada hueco de caché de más cuesta tiempo. Esto sustituye al alcance original del plan (KV estática y grafo de todo el paso del talker).",
+        "Parte de scripts/probe_hip_graph.py y de sus tests (backend/tests/test_probe_hip_graph.py): el frame desenrollado de sample_with_loop con StaticCache de exactamente 16 huecos, máscaras 4D booleanas precalculadas, entradas en tensores fijos del dispositivo que se rellenan antes de cada replay, y los mismos warpers de HF que hoy. Intégralo en backend/utils/qwen_code_predictor.py (el bucle de la 3.2) como camino rápido de ese bucle.",
+        "Captura al cargar el modelo, junto al calentamiento de la 1.4, en un stream aparte y con la GPU en serie (la cola única de la 2.4). La salida del grafo es un búfer fijo: clónala antes del siguiente replay. Al descargar el modelo, libera el grafo, su pool de memoria y los búferes estáticos.",
+        "Solo lote de 1. Con lote ≥ 2 (modo lote de la 3.6) se usa el bucle de la 3.2 sin grafo. Si la captura o un replay fallan, se registra un aviso y se vuelve al bucle de la 3.2 para el resto de la vida del modelo.",
+        "Solo en ROCm (VOICEBOX_BACKEND_VARIANT == 'rocm' o, en modo desarrollo, torch.version.hip), activo por defecto; VOICEBOX_QWEN_CP_GRAPH=0 lo desactiva. En CPU, CUDA, DirectML y MLX no cambia nada.",
+        "La onda debe salir idéntica a la del estado actual (puerta tipo 1, SNR > 50 dB): mismos códigos con la misma semilla. Si en frases reales no sale idéntica, no relajes la puerta: busca la diferencia (orden de operaciones, dtype, máscara, consumo del RNG) y apúntala en perf-loop/notes/3.5b.md.",
+        "Tests sin GPU: el frame desenrollado equivale a sample_with_loop (reaprovecha los de la 3.5a), el despacho (lote 1 con grafo, lote ≥ 2 con bucle, bandera a 0 con bucle), el fallback tras un fallo de captura o de replay, y la liberación al descargar.",
+        "Antes de entregar: banco de humo con p01,p02 y --passes warm,hot. Las duraciones deben coincidir con las de perf-loop/bench/3.3-a1 y el talker debería pasar de ~13 a ~16 pasos/s."
       ],
       "files_hint": [
-        "backend/backends/pytorch_backend.py",
+        "scripts/probe_hip_graph.py y backend/tests/test_probe_hip_graph.py (punto de partida, de la 3.5a)",
+        "backend/utils/qwen_code_predictor.py (bucle de la 3.2)",
+        "backend/backends/pytorch_backend.py (carga, calentamiento y descarga del modelo)",
         "perf-loop/notes/3.5a-hipgraph.md"
       ],
       "acceptance": [
-        "≥ 5 % más rápido (se esperan 2–4× en el talker)",
-        "Tipo 2: métricas y escucha ciega si la onda cambia"
+        "≥ 5 % más rápido (la 3.5a estima −20 a −25 % en el talker)",
+        "Tipo 1: onda idéntica al último estado aceptado (SNR > 50 dB)",
+        "El modo lote de la 3.6 sigue funcionando (con el bucle)"
       ],
       "gate": {
         "bench": {
@@ -1939,7 +1948,12 @@
             "warm",
             "hot"
           ],
-          "miopen_db": "persist"
+          "miopen_db": "persist",
+          "scenario": "batch",
+          "concurrent": 4,
+          "env": {
+            "VOICEBOX_QWEN_BATCH": "1"
+          }
         },
         "tests": true,
         "checks": [
@@ -1948,11 +1962,18 @@
             "op": ">=",
             "value": 0.05,
             "label": "Al menos 5 % más rápido que el último estado aceptado"
+          },
+          {
+            "metric": "derived.batch_throughput_gain",
+            "op": ">=",
+            "value": 1.1,
+            "label": "El modo lote sigue funcionando y no es más lento que uno a uno"
           }
         ]
       },
       "status": "pending",
-      "attempts": 0
+      "attempts": 0,
+      "start_approved": true
     },
     {
       "id": "3.G",
