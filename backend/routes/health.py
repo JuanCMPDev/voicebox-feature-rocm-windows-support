@@ -3,6 +3,7 @@
 import asyncio
 import os
 import signal
+import time
 from pathlib import Path
 
 import torch
@@ -19,6 +20,52 @@ router = APIRouter()
 
 # Frontend build directory — present in Docker, absent in dev/API-only mode
 _frontend_dir = Path(__file__).resolve().parent.parent.parent / "frontend"
+
+# The frontend polls /health every 30 s; walking the HF cache once a minute is enough for a status badge.
+MODEL_DOWNLOADED_CACHE_SECONDS = 60.0
+
+# repo_id -> (time.monotonic() of the scan, result)
+_model_downloaded_cache: dict[str, tuple[float, bool | None]] = {}
+
+
+def _scan_model_downloaded(repo_id: str) -> bool | None:
+    """Whether the HF cache holds repo_id: True, False (repo folder without weights) or None (unknown)."""
+    from huggingface_hub import constants as hf_constants
+
+    try:
+        from huggingface_hub import scan_cache_dir
+
+        cache_info = scan_cache_dir()
+        for repo in cache_info.repos:
+            if repo.repo_id == repo_id:
+                return True
+        return None
+    except (ImportError, Exception):
+        repo_cache = Path(hf_constants.HF_HUB_CACHE) / ("models--" + repo_id.replace("/", "--"))
+        if not repo_cache.exists():
+            return None
+        return (
+            any(repo_cache.rglob("*.bin"))
+            or any(repo_cache.rglob("*.safetensors"))
+            or any(repo_cache.rglob("*.pt"))
+            or any(repo_cache.rglob("*.pth"))
+            or any(repo_cache.rglob("*.npz"))
+        )
+
+
+async def _model_downloaded(repo_id: str) -> bool | None:
+    """_scan_model_downloaded, cached for MODEL_DOWNLOADED_CACHE_SECONDS.
+
+    scan_cache_dir() stats every file of every cached repo; it runs in a worker thread so the event loop keeps
+    serving progress events and the generation queue while it walks the disk.
+    """
+    now = time.monotonic()
+    cached = _model_downloaded_cache.get(repo_id)
+    if cached is not None and now - cached[0] < MODEL_DOWNLOADED_CACHE_SECONDS:
+        return cached[1]
+    result = await asyncio.to_thread(_scan_model_downloaded, repo_id)
+    _model_downloaded_cache[repo_id] = (now, result)
+    return result
 
 
 @router.get("/")
@@ -56,9 +103,6 @@ async def watchdog_disable():
 @router.get("/health", response_model=models.HealthResponse)
 async def health():
     """Health check endpoint."""
-    from huggingface_hub import constants as hf_constants
-    from pathlib import Path
-
     tts_model = tts.get_tts_model()
     backend_type = get_backend_type()
 
@@ -143,27 +187,7 @@ async def health():
 
         default_config = get_model_config("qwen-tts-1.7B")
         default_model_id = default_config.hf_repo_id if default_config else "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
-
-        try:
-            from huggingface_hub import scan_cache_dir
-
-            cache_info = scan_cache_dir()
-            for repo in cache_info.repos:
-                if repo.repo_id == default_model_id:
-                    model_downloaded = True
-                    break
-        except (ImportError, Exception):
-            cache_dir = hf_constants.HF_HUB_CACHE
-            repo_cache = Path(cache_dir) / ("models--" + default_model_id.replace("/", "--"))
-            if repo_cache.exists():
-                has_model_files = (
-                    any(repo_cache.rglob("*.bin"))
-                    or any(repo_cache.rglob("*.safetensors"))
-                    or any(repo_cache.rglob("*.pt"))
-                    or any(repo_cache.rglob("*.pth"))
-                    or any(repo_cache.rglob("*.npz"))
-                )
-                model_downloaded = has_model_files
+        model_downloaded = await _model_downloaded(default_model_id)
     except Exception:
         pass
 
