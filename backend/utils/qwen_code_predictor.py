@@ -248,9 +248,10 @@ def _capture(fn: Callable[[], Any], device: Any) -> tuple[Any, Any]:
     """``fn`` run eagerly on a side stream, then captured as a CUDA (HIP) graph; the graph and ``fn``'s output.
 
     The graph gets its own memory pool, so the output and every tensor ``fn`` allocates keep their addresses for the
-    replays: the output is a fixed buffer each replay overwrites. ``thread_local`` capture mode only checks this
-    thread's CUDA calls, so a request on another thread (``/generate/stream`` does not take the GPU queue) neither fails
-    nor breaks the capture.
+    replays: the output is a fixed buffer each replay overwrites. The capture runs on the warm-up's stream, so its GEMMs
+    use the BLAS workspace torch gave that stream during the warm-up (~108 MiB on gfx1101) instead of a second one.
+    ``thread_local`` capture mode only checks this thread's CUDA calls, so a request on another thread
+    (``/generate/stream`` does not take the GPU queue) neither fails nor breaks the capture.
     """
     import torch  # lazy: heavy import
 
@@ -261,10 +262,28 @@ def _capture(fn: Callable[[], Any], device: Any) -> tuple[Any, Any]:
             fn()
     torch.cuda.current_stream(device).wait_stream(side)
     graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph, capture_error_mode="thread_local"):
+    with torch.cuda.graph(graph, stream=side, capture_error_mode="thread_local"):
         output = fn()
     torch.cuda.synchronize(device)
     return graph, output
+
+
+# FrameGraphs holding a captured graph. The BLAS workspaces their kernels write to may only be dropped when none is left.
+_live_graphs: set[int] = set()
+_live_graphs_lock = threading.Lock()
+
+
+def _drop_blas_workspaces() -> None:
+    """Free the BLAS workspaces torch keeps per (handle, stream), once no captured graph uses one.
+
+    Torch never frees them, so the capture stream's would outlive the model; each stream gets a new one at its next
+    GEMM.
+    """
+    import torch  # lazy: heavy import
+
+    clear = getattr(torch._C, "_cuda_clearCublasWorkspaces", None)
+    if clear is not None:
+        clear()
 
 
 class FrameGraph:
@@ -302,9 +321,16 @@ class FrameGraph:
         """Capture the frame (raises if the capture fails; the caller then keeps the loop)."""
         import torch  # lazy: heavy import
 
-        # Outside inference mode: the buffer stays a normal tensor, which replays may write with or without it.
-        with torch.inference_mode(False), torch.no_grad():
-            graph, sequences = _capture(self._frame, self._device)
+        with _live_graphs_lock:  # from here on its capture stream's workspace must stay
+            _live_graphs.add(id(self))
+        try:
+            # Outside inference mode: the buffer stays a normal tensor, which replays may write with or without it.
+            with torch.inference_mode(False), torch.no_grad():
+                graph, sequences = _capture(self._frame, self._device)
+        except BaseException:
+            with _live_graphs_lock:
+                _live_graphs.discard(id(self))
+            raise
         with self._lock:
             self.graph, self.sequences = graph, sequences
 
@@ -331,21 +357,33 @@ class FrameGraph:
             return self.sequences.clone()  # the next replay overwrites the output buffer
 
     def release(self) -> None:
-        """Free the graph, its memory pool and the fixed buffers. Idempotent; logs instead of raising."""
+        """Free the graph, its memory pool, the fixed buffers and the BLAS workspace of its capture stream.
+
+        Idempotent; logs instead of raising.
+        """
         with self._lock:
             graph, self.graph = self.graph, None
             self.sequences = None
             self.embeds = None
             if graph is None:
                 return
+            on_gpu = self._device.type == "cuda"
             try:
                 import torch  # lazy: heavy import
 
-                if self._device.type == "cuda":
+                if on_gpu:
                     torch.cuda.synchronize(self._device)  # no replay may still be reading the pool
                 graph.reset()
             except Exception:
                 logger.warning("ROCm: releasing the code predictor graph failed", exc_info=True)
+                return
+            with _live_graphs_lock:
+                _live_graphs.discard(id(self))
+                if on_gpu and not _live_graphs:
+                    try:
+                        _drop_blas_workspaces()
+                    except Exception:
+                        logger.warning("ROCm: freeing the BLAS workspaces failed", exc_info=True)
 
 
 def _graph_output(sequences: Any, plan: _SamplingPlan) -> Any:

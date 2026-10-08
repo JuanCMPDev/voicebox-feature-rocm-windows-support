@@ -430,6 +430,61 @@ class TestRelease:
         qwen_code_predictor.release_graph(model)
         assert getattr(predictor.generate, "frame_graph", None) is None
 
+    def test_blas_workspaces_go_with_the_last_graph(self, graphs, monkeypatch):
+        """The graphs' kernels write to the BLAS workspace of their capture stream: dropped only when none is left."""
+        monkeypatch.setattr(qwen_code_predictor, "_live_graphs", set())
+        dropped: list[int] = []
+        monkeypatch.setattr(qwen_code_predictor, "_drop_blas_workspaces", lambda: dropped.append(1))
+        monkeypatch.setattr(torch.cuda, "synchronize", lambda _device=None: None)
+        first, second = _captured()[1], _captured()[1]
+        for model in (first, second):
+            model.model.talker.code_predictor.generate.frame_graph._device = types.SimpleNamespace(type="cuda")
+        assert len(qwen_code_predictor._live_graphs) == 2
+
+        qwen_code_predictor.release_graph(first)
+        assert dropped == []
+        qwen_code_predictor.release_graph(second)
+        assert dropped == [1]
+        assert qwen_code_predictor._live_graphs == set()
+
+    def test_cpu_graphs_drop_no_workspace(self, graphs, monkeypatch):
+        monkeypatch.setattr(qwen_code_predictor, "_live_graphs", set())
+        dropped: list[int] = []
+        monkeypatch.setattr(qwen_code_predictor, "_drop_blas_workspaces", lambda: dropped.append(1))
+        _, model, _ = _captured()
+        qwen_code_predictor.release_graph(model)
+        assert dropped == []
+        assert qwen_code_predictor._live_graphs == set()
+
+    def test_failed_capture_leaves_no_live_graph(self, monkeypatch):
+        monkeypatch.setattr(qwen_code_predictor, "_live_graphs", set())
+
+        def failing(_fn, _device):
+            raise RuntimeError("hipErrorStreamCaptureInvalidated")
+
+        monkeypatch.setattr(qwen_code_predictor, "_capture", failing)
+        model = _qwen_model(_predictor())
+        qwen_code_predictor.install(model)
+        assert qwen_code_predictor.capture_graph(model) is False
+        assert qwen_code_predictor._live_graphs == set()
+
+    def test_failed_reset_keeps_the_workspaces(self, graphs, monkeypatch):
+        """A graph that may still exist keeps the workspace its kernels write to."""
+        monkeypatch.setattr(qwen_code_predictor, "_live_graphs", set())
+        dropped: list[int] = []
+        monkeypatch.setattr(qwen_code_predictor, "_drop_blas_workspaces", lambda: dropped.append(1))
+        monkeypatch.setattr(torch.cuda, "synchronize", lambda _device=None: None)
+        predictor, model, _ = _captured()
+        predictor.generate.frame_graph._device = types.SimpleNamespace(type="cuda")
+
+        def failing_reset():
+            raise RuntimeError("hipErrorIllegalAddress")
+
+        graphs[0].reset = failing_reset
+        qwen_code_predictor.release_graph(model)
+        assert dropped == []
+        assert len(qwen_code_predictor._live_graphs) == 1
+
     def test_release_failure_is_logged(self, graphs, caplog):
         predictor, model, _ = _captured()
 
