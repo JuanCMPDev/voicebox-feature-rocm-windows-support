@@ -139,3 +139,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T07:14:25-05:00 · 3.5b cerrada: pass
 - 2026-10-08T07:14:45-05:00 · 3.G empieza en perf/qwen-task/3.G (base 6e5de7f4)
 - 2026-10-08T07:14:50-05:00 · 3.G: verificación 3.G-a1 lanzada
+- 2026-10-08T07:18:55-05:00 · 3.G espera decisión humana (ab)
