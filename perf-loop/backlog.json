@@ -37,7 +37,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T12:53:57-05:00",
+    "updated_at": "2026-10-08T13:04:05-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -2285,7 +2285,7 @@
           }
         ]
       },
-      "status": "in_progress",
+      "status": "awaiting_human",
       "attempts": 2,
       "branch": "perf/qwen-task/4.4",
       "base": "d798e9f201fbffbe1239962ee0b3721505db8ae0",
@@ -2325,7 +2325,13 @@
       "consumed_tags": [
         "4.4-a1"
       ],
-      "resume_hint": "implement"
+      "resume_hint": "implement",
+      "human": {
+        "kind": "approve",
+        "at": "2026-10-08T13:04:05-05:00",
+        "tag": "4.4-a2",
+        "message": "Métricas: hot_mean_s=4.843, warm_mean_s=4.837, rtf_hot_mean=0.868, rtf_warm_mean=0.869, talker_steps_per_s_mean=15.955, restart_overhead_s_mean=-0.006, ufdb_lines_added_warm=0, snr_prev_min=-3.276, snr_anchor_min=-3.276, spk_delta_anchor=0.000, wer_delta_anchor=-0.007, dur_dev_anchor=0.289, speedup=-0.088, speedup_pass=hot. Revisa la rama perf/qwen-task/4.4, perf-loop/RESULTS.md y perf-loop/bench/4.4-a2/."
+      }
     },
     {
       "id": "4.3",
