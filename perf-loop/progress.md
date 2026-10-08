@@ -94,3 +94,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-07T21:25:51-05:00 · 2.G empieza en perf/qwen-task/2.G (base f1533a9f)
 - 2026-10-07T21:25:58-05:00 · 2.G: verificación 2.G-a1 lanzada
 - 2026-10-07T21:33:35-05:00 · 2.G espera decisión humana (approve)
+- 2026-10-07T22:16:00-05:00 · 2.G bloqueada: rechazada por el usuario: Talker a 6,8 pasos/s por bajadas de frecuencia; se repite tras los ajustes de energía de la 4.1
