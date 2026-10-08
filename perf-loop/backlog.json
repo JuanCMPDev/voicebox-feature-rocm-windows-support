@@ -15,7 +15,7 @@
       "1": "perf/qwen-f1",
       "2": "perf/qwen-f2"
     },
-    "current": null,
+    "current": "2.5",
     "anchor": "0.5-a1",
     "quality_ref": "2.1-a1",
     "perf_ref": "2.1-a1",
@@ -34,7 +34,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-07T19:02:28-05:00",
+    "updated_at": "2026-10-07T21:17:24-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -1204,8 +1204,25 @@
         },
         "tests": true
       },
-      "status": "pending",
-      "attempts": 0
+      "status": "in_progress",
+      "attempts": 1,
+      "branch": "perf/qwen-task/2.5",
+      "base": "769df339f1c3d26f8c1ce73580c8e3c8616e5bca",
+      "started_at": "2026-10-07T19:02:45-05:00",
+      "notes": [
+        {
+          "at": "2026-10-08T01:45:36+00:00",
+          "text": "Apagón durante la implementación (sin commit). Quedaron sin commitear backend/routes/health.py y backend/tests/test_health_cache_scan.py; ambos están completos sintácticamente. Revisa el diff con git diff y git status, termínalo y haz commit; no empieces de cero."
+        },
+        {
+          "at": "2026-10-07T21:17:24-05:00",
+          "text": "review: approve — scan_cache_dir de /health pasa a asyncio.to_thread con caché de 60 s por repo (fallos no se cachean); mismos resultados que antes (True/None/fallback a ficheros de pesos); 9 tests nuevos sin GPU; sin hallazgos; riesgo menor: la insignia 'Model Ready' puede tardar hasta 60 s tras una descarga"
+        }
+      ],
+      "last_tag": "2.5-a1",
+      "tags": [
+        "2.5-a1"
+      ]
     },
     {
       "id": "2.2",
