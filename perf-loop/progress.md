@@ -161,3 +161,4 @@ Registro cronológico que escribe loopctl (no editar a mano).
 - 2026-10-08T12:53:57-05:00 · 4.4: verificación 4.4-a2 lanzada
 - 2026-10-08T13:04:05-05:00 · 4.4 espera decisión humana (approve)
 - 2026-10-08T13:07:46-05:00 · 4.3 cerrada: skip — RTF 0,87 en Windows; no compensa cambiar de stack
+- 2026-10-08T13:09:32-05:00 · 4.4 cerrada: pass — Finales completos en p01-p05 y lote

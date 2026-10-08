@@ -17,10 +17,10 @@
       "3": "perf/qwen-f3",
       "4": "perf/qwen-f4"
     },
-    "current": "4.4",
+    "current": null,
     "anchor": "0.5-a1",
-    "quality_ref": "3.G-a1",
-    "perf_ref": "3.G-a1",
+    "quality_ref": "4.4-a2",
+    "perf_ref": "4.4-a2",
     "frozen": {
       "scripts/bench_tts.py": "f110356a8b4c689e7f8b8280c13f6e4e554d0c586a6ce22fe58683047ff97813",
       "scripts/compare_wavs.py": "e3c9f297578d3ef793babcd4b32a3520615c4cff2bc9257608ab75befb333370",
@@ -37,7 +37,7 @@
       "aa_spk_delta": 0.0,
       "aa_wer_delta": 0.0
     },
-    "updated_at": "2026-10-08T13:07:46-05:00",
+    "updated_at": "2026-10-08T13:09:32-05:00",
     "frozen_at": "2026-10-07T08:02:51-05:00",
     "venv_pkg_hash": "1c4f03aeb635d56cb16d0eaa3d18d8db7f92e52220638e5df2c990d74a6a23e2",
     "anchor_wavs": {
@@ -2285,7 +2285,7 @@
           }
         ]
       },
-      "status": "awaiting_human",
+      "status": "passed",
       "attempts": 2,
       "branch": "perf/qwen-task/4.4",
       "base": "d798e9f201fbffbe1239962ee0b3721505db8ae0",
@@ -2326,11 +2326,13 @@
         "4.4-a1"
       ],
       "resume_hint": "implement",
-      "human": {
-        "kind": "approve",
-        "at": "2026-10-08T13:04:05-05:00",
+      "result": {
+        "kind": "pass",
+        "reason": "Finales completos en p01-p05 y lote",
+        "at": "2026-10-08T13:09:32-05:00",
         "tag": "4.4-a2",
-        "message": "Métricas: hot_mean_s=4.843, warm_mean_s=4.837, rtf_hot_mean=0.868, rtf_warm_mean=0.869, talker_steps_per_s_mean=15.955, restart_overhead_s_mean=-0.006, ufdb_lines_added_warm=0, snr_prev_min=-3.276, snr_anchor_min=-3.276, spk_delta_anchor=0.000, wer_delta_anchor=-0.007, dur_dev_anchor=0.289, speedup=-0.088, speedup_pass=hot. Revisa la rama perf/qwen-task/4.4, perf-loop/RESULTS.md y perf-loop/bench/4.4-a2/."
+        "verdict": "needs_human",
+        "by_human": true
       }
     },
     {
