@@ -10,8 +10,9 @@ text. ``PyTorchTTSBackend._load_model_sync`` calls it, so a generation that trig
 
 Nothing the warm-up computes is kept: its outputs are discarded, no weight, config or setting changes, and it runs
 through the same (already wrapped) ``speech_tokenizer.decode`` as generation, so the decoder picks the same kernels.
-Its sampling consumes RNG, which a seeded generation re-seeds before it samples. Any failure is logged and swallowed:
-the model works without warm-up.
+Its sampling consumes RNG, which a seeded generation re-seeds before it samples; the backend publishes the model only
+after the warm-up, so no generation samples while it runs. Any failure is logged and swallowed: the model works without
+warm-up.
 """
 
 import logging

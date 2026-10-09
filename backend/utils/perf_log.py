@@ -113,11 +113,11 @@ class StageTimer:
 
     def stop(self, **fields: Any) -> float | None:
         """Synchronize the GPU, take the end timestamp and log the line; returns the elapsed ms or None."""
-        if self._started_at is None:
+        started_at, self._started_at = self._started_at, None  # closed even if the sync below raises
+        if started_at is None:
             return None
         self._sync()
-        elapsed_ms = (self._clock() - self._started_at) * 1000.0
-        self._started_at = None
+        elapsed_ms = (self._clock() - started_at) * 1000.0
         self.ms = elapsed_ms
         payload = {"ms": round(elapsed_ms, 3), **self.fields, **fields}
         steps = payload.get("steps")

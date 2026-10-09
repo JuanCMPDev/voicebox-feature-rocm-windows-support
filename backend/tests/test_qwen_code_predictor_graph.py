@@ -13,6 +13,7 @@ Usage:
     python -m pytest backend/tests/test_qwen_code_predictor_graph.py -v
 """
 
+import asyncio
 import contextlib
 import logging
 import sys
@@ -23,7 +24,9 @@ from typing import Any
 import pytest
 import torch
 
+from backend import backends
 from backend.backends import pytorch_backend
+from backend.services import task_queue
 from backend.tests.test_qwen_code_predictor import (
     _CODE_GROUPS,
     _TALKER_ARGUMENTS,
@@ -617,3 +620,23 @@ class TestBackend:
         loaded, _ = backend()
         loaded.unload_model()
         assert loaded.model is None
+
+    @pytest.mark.asyncio
+    async def test_the_apps_unload_waits_for_the_gpu_turn(self, backend, monkeypatch, graphs):
+        """An unload from the app (unload_backend) releases the graph only after the queued generation running ends."""
+        monkeypatch.setattr(torch.version, "hip", _HIP)
+        monkeypatch.setattr(task_queue, "_gpu_lock", None)
+        loaded, _ = backend()
+
+        generation_turn = task_queue.gpu_lock()
+        await generation_turn.acquire()
+        unload = asyncio.create_task(backends.unload_backend(loaded))
+        await asyncio.sleep(0.01)
+        assert not unload.done()
+        assert loaded.model is not None
+        assert graphs[0].resets == 0
+
+        generation_turn.release()
+        await asyncio.wait_for(unload, timeout=5)
+        assert loaded.model is None
+        assert graphs[0].resets == 1

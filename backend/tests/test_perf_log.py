@@ -13,6 +13,7 @@ import importlib.util
 import io
 import json
 import logging
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -140,6 +141,19 @@ class TestStageTimer:
         timer = perf_log.StageTimer("save", clock=fake.clock, sync=fake.sync, enabled=True)
         assert timer.stop() is None
         assert fake.calls == []
+        assert lines() == []
+
+    def test_a_failed_stop_still_closes_the_stage(self, lines):
+        fake = FakeTiming()
+        timer = perf_log.StageTimer("codec", clock=fake.clock, sync=fake.sync, enabled=True).start()
+
+        def failing_sync():
+            raise RuntimeError("HIP error")
+
+        timer._sync = failing_sync
+        with pytest.raises(RuntimeError):
+            timer.stop()
+        assert timer.stop() is None
         assert lines() == []
 
     @pytest.mark.parametrize("value", [None, "", "0", "true"])
@@ -383,8 +397,9 @@ class _LoadedBackend:
         return True
 
 
-@pytest.mark.asyncio
-async def test_run_generation_tags_every_stage_with_its_id(monkeypatch, enabled, timing, lines):
+@pytest.fixture
+def generation_run(monkeypatch):
+    """``run_generation`` of ``gen-42`` on stubs, plus the statuses it writes and its task manager."""
     from backend import backends
     from backend.services import generation
     from backend.utils import audio as audio_utils, chunked_tts
@@ -422,17 +437,26 @@ async def test_run_generation_tags_every_stage_with_its_id(monkeypatch, enabled,
     monkeypatch.setattr(generation, "_save_generate", lambda **kwargs: "generations/gen-42.wav")
     monkeypatch.setattr(generation, "_notify_speak_end", lambda *args, **kwargs: None)
 
-    await generation.run_generation(
-        generation_id="gen-42",
-        profile_id="profile-1",
-        text="hola",
-        language="es",
-        engine="qwen",
-        model_size="1.7B",
-        seed=1,
-        normalize=True,
-        mode="generate",
-    )
+    async def run() -> None:
+        await generation.run_generation(
+            generation_id="gen-42",
+            profile_id="profile-1",
+            text="hola",
+            language="es",
+            engine="qwen",
+            model_size="1.7B",
+            seed=1,
+            normalize=True,
+            mode="generate",
+        )
+
+    return run, statuses, task_manager
+
+
+@pytest.mark.asyncio
+async def test_run_generation_tags_every_stage_with_its_id(enabled, timing, lines, generation_run):
+    run, statuses, task_manager = generation_run
+    await run()
 
     events = lines()
     assert statuses[-1] == "completed"
@@ -442,3 +466,41 @@ async def test_run_generation_tags_every_stage_with_its_id(monkeypatch, enabled,
     assert task_manager.completed == ["gen-42"]
     perf_log.emit("after", ms=0.0)
     assert lines()[-1]["gen_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_run_generation_cleans_up_when_its_first_mark_fails(monkeypatch, enabled, lines, generation_run):
+    """The GPU sync of the first mark raises (an earlier kernel faulted): the generation fails like any other."""
+
+    def failing_sync() -> None:
+        raise RuntimeError("HIP error: an illegal memory access was encountered")
+
+    monkeypatch.setattr(perf_log, "cuda_synchronize", failing_sync)
+    run, statuses, task_manager = generation_run
+    await run()
+
+    assert statuses == ["failed"]
+    assert task_manager.completed == ["gen-42"]
+    assert lines() == []
+
+
+def test_unload_frees_an_instrumented_model(monkeypatch, enabled):
+    """The timing wrappers hold the bound methods they wrap, a reference cycle: unload breaks it before the cache is
+    emptied, so the model's memory is returned."""
+    from backend.backends import pytorch_backend
+
+    model = FakeQwenModel()
+    perf_log.instrument_qwen_model(model)
+    inner = weakref.ref(model.model)
+    alive_when_emptied: list[bool] = []
+
+    def empty_device_cache(_device) -> None:
+        alive_when_emptied.append(inner() is not None)
+
+    monkeypatch.setattr(pytorch_backend, "empty_device_cache", empty_device_cache)
+    backend = pytorch_backend.PyTorchTTSBackend()
+    backend.model = model
+    del model
+
+    backend.unload_model()
+    assert alive_when_emptied == [False]

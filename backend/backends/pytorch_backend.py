@@ -5,8 +5,10 @@ PyTorch backend implementation for TTS and STT.
 from typing import Any, Optional, List, Tuple
 import asyncio
 import contextlib
+import gc
 import logging
 import os
+import threading
 import torch
 import numpy as np
 
@@ -103,6 +105,8 @@ class PyTorchTTSBackend:
         self.model_size = model_size
         self.device = self._get_device()
         self._current_model_size = None
+        # Held by the thread that loads the model, from from_pretrained to the end of the warm-up (_load_model_sync).
+        self._load_lock = threading.Lock()
 
     def _get_device(self) -> str:
         """Get the best available device."""
@@ -149,18 +153,31 @@ class PyTorchTTSBackend:
         if self.model is not None and self._current_model_size == model_size:
             return
 
-        # Unload existing model if different size requested
-        if self.model is not None and self._current_model_size != model_size:
-            self.unload_model()
-
-        # Run blocking load in thread pool
+        # Run blocking load (and the unload of a model of another size) in thread pool
         await asyncio.to_thread(self._load_model_sync, model_size)
 
     # Alias for compatibility
     load_model = load_model_async
 
     def _load_model_sync(self, model_size: str):
-        """Synchronous model loading."""
+        """Synchronous model loading, one load at a time.
+
+        The loading thread holds ``_load_lock`` until the model is ready, even if the request that started the load is
+        cancelled: a request that arrives meanwhile waits here and then finds the model loaded, instead of loading a
+        second copy or generating on one that is still warming up.
+        """
+        with self._load_lock:
+            if self.model is not None and self._current_model_size == model_size:
+                return
+
+            # Unload existing model if different size requested
+            if self.model is not None:
+                self.unload_model()
+
+            self._load_model_locked(model_size)
+
+    def _load_model_locked(self, model_size: str):
+        """Load, set up and warm up the model; publish it as ``self.model`` only once it is ready."""
         model_name = f"qwen-tts-{model_size}"
         is_cached = self._is_model_cached(model_size)
 
@@ -178,22 +195,20 @@ class PyTorchTTSBackend:
             tts_cache_dir = hf_constants.HF_HUB_CACHE
 
             if self.device == "cpu":
-                self.model = Qwen3TTSModel.from_pretrained(
+                model = Qwen3TTSModel.from_pretrained(
                     model_path,
                     cache_dir=tts_cache_dir,
                     torch_dtype=torch.float32,
                     low_cpu_mem_usage=False,
                 )
             else:
-                self.model = Qwen3TTSModel.from_pretrained(
+                model = Qwen3TTSModel.from_pretrained(
                     model_path,
                     cache_dir=tts_cache_dir,
                     device_map=self.device,
                     torch_dtype=torch.bfloat16,
                 )
 
-        self._current_model_size = model_size
-        self.model_size = model_size
         logger.info("TTS model %s loaded successfully", model_size)
 
         # Every device: the talker's stopping rule holds back a phrase's first likely codec_eos and rules out chance
@@ -202,14 +217,14 @@ class PyTorchTTSBackend:
         # runs the rule's processor and pays its kernels' first launch; the warm-up keeps its own prompt, without
         # guards.
         if qwen_end_fix.end_fix_enabled():
-            qwen_end_fix.install(self.model)
+            qwen_end_fix.install(model)
 
         if miopen_codec.codec_immediate_enabled(
             self.device,
             os.environ.get("VOICEBOX_BACKEND_VARIANT"),
             getattr(torch.version, "hip", None),
         ):
-            miopen_codec.use_immediate_mode_for_codec(self.model)
+            miopen_codec.use_immediate_mode_for_codec(model)
 
         # ROCm: the code predictor samples each frame's 15 codebook tokens in a loop without host reads instead of HF
         # generate (same forwards, same sampling). Before the warm-up, so the warm-up runs the loop generation uses.
@@ -218,7 +233,7 @@ class PyTorchTTSBackend:
             os.environ.get("VOICEBOX_BACKEND_VARIANT"),
             getattr(torch.version, "hip", None),
         ):
-            qwen_code_predictor.install(self.model)
+            qwen_code_predictor.install(model)
 
         # ROCm: the loop's batch-1 frame captured once as a HIP graph, which each talker step then replays (same
         # kernels, one launch). Before the warm-up, so its talker step already replays the graph.
@@ -227,7 +242,7 @@ class PyTorchTTSBackend:
             os.environ.get("VOICEBOX_BACKEND_VARIANT"),
             getattr(torch.version, "hip", None),
         ):
-            qwen_code_predictor.capture_graph(self.model)
+            qwen_code_predictor.capture_graph(model)
 
         # ROCm: pay the first decode of each codec length and the first talker step here, while a generation that
         # triggered the load still shows loading_model. After the immediate-mode wrapper, so the warm-up decodes run
@@ -237,22 +252,45 @@ class PyTorchTTSBackend:
             os.environ.get("VOICEBOX_BACKEND_VARIANT"),
             getattr(torch.version, "hip", None),
         ):
-            qwen_warmup.warm_up(self.model)
+            qwen_warmup.warm_up(model)
 
         if perf_log.is_enabled():
-            perf_log.instrument_qwen_model(self.model)
-            perf_log.emit_env(perf_log.qwen_env_info(self.model, self.device))
+            perf_log.instrument_qwen_model(model)
+            perf_log.emit_env(perf_log.qwen_env_info(model, self.device))
+
+        # Only now is the model loaded: until here is_loaded() is False, so the warm-up's sampling never shares the RNG
+        # with a generation, and requests that arrive meanwhile wait for this load in _load_model_sync.
+        self.model = model
+        self._current_model_size = model_size
+        self.model_size = model_size
+
+    async def unload(self) -> None:
+        """Unload the model in the GPU turn (``task_queue.gpu_lock``), once the queued generation running finishes.
+
+        ``unload_backend`` (the app's unload and delete routes, shutdown) calls this instead of :meth:`unload_model`,
+        so the code predictor graph (ROCm) is never released, nor the model freed, under a queued generation. Not for
+        code that already holds the GPU turn (the lock is not reentrant): a size switch inside a generation goes
+        straight to :meth:`unload_model`.
+        """
+        from ..services.task_queue import gpu_lock  # lazy: the services import the backends
+
+        async with gpu_lock():
+            self.unload_model()
 
     def unload_model(self):
         """Unload the model to free memory."""
         if self.model is not None:
-            # The code predictor graph (ROCm) holds its own memory pool; free it now rather than when the GC breaks
-            # the model's reference cycles, so empty_device_cache below returns that memory too.
+            # The code predictor graph (ROCm) holds its own memory pool and the BLAS workspace of its capture stream;
+            # release it explicitly, as collecting it would leave the workspace allocated.
             qwen_code_predictor.release_graph(self.model)
             del self.model
             self.model = None
             self._current_model_size = None
 
+            # The wrappers set on the model's methods (end rule, codec immediate mode, code predictor loop, VBPERF
+            # timers) hold the bound methods they wrap: reference cycles that keep the weights alive until the GC
+            # breaks them. Collect now so empty_device_cache returns that memory.
+            gc.collect()
             empty_device_cache(self.device)
 
             logger.info("TTS model unloaded")

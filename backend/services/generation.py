@@ -69,9 +69,12 @@ async def run_generation(
     task_manager = get_task_manager()
     bg_db = next(get_db())
     perf_token = perf_log.set_generation_id(generation_id)
-    perf_total = perf_log.stage("total").start()
+    perf_total = perf_log.stage("total")
 
     try:
+        # Inside the try: with VBPERF on, start() synchronizes the GPU, which may raise; the generation then fails
+        # and is cleaned up like any other.
+        perf_total.start()
         tts_model = get_tts_backend_for_engine(engine)
 
         if not tts_model.is_loaded():
@@ -117,33 +120,32 @@ async def run_generation(
         duration = len(audio) / sample_rate
 
         # --- Persist audio and update status -----------------------------
-        perf_save = perf_log.stage("save").start()
-        if mode == "generate":
-            final_path = _save_generate(
-                generation_id=generation_id,
-                audio=audio,
-                sample_rate=sample_rate,
-                effects_chain=effects_chain,
-                save_audio=save_audio,
-                db=bg_db,
-            )
-        elif mode == "retry":
-            final_path = _save_retry(
-                generation_id=generation_id,
-                audio=audio,
-                sample_rate=sample_rate,
-                save_audio=save_audio,
-            )
-        elif mode == "regenerate":
-            final_path = _save_regenerate(
-                generation_id=generation_id,
-                version_id=version_id,
-                audio=audio,
-                sample_rate=sample_rate,
-                save_audio=save_audio,
-                db=bg_db,
-            )
-        perf_save.stop()
+        with perf_log.stage("save"):
+            if mode == "generate":
+                final_path = _save_generate(
+                    generation_id=generation_id,
+                    audio=audio,
+                    sample_rate=sample_rate,
+                    effects_chain=effects_chain,
+                    save_audio=save_audio,
+                    db=bg_db,
+                )
+            elif mode == "retry":
+                final_path = _save_retry(
+                    generation_id=generation_id,
+                    audio=audio,
+                    sample_rate=sample_rate,
+                    save_audio=save_audio,
+                )
+            elif mode == "regenerate":
+                final_path = _save_regenerate(
+                    generation_id=generation_id,
+                    version_id=version_id,
+                    audio=audio,
+                    sample_rate=sample_rate,
+                    save_audio=save_audio,
+                    db=bg_db,
+                )
 
         await history.update_generation_status(
             generation_id=generation_id,

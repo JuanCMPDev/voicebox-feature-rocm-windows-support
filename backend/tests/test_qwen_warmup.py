@@ -10,10 +10,12 @@ Usage:
     python -m pytest backend/tests/test_qwen_warmup.py -v
 """
 
+import asyncio
 import contextlib
 import dataclasses
 import logging
 import sys
+import threading
 import types
 from typing import Any
 
@@ -406,3 +408,42 @@ class TestBackendLoad:
         assert "codec warm-up failed" in caplog.text
         assert len(model.model.generate_calls) == 1
         assert miopen.immediate is False
+
+    @pytest.mark.asyncio
+    async def test_a_request_during_the_warm_up_waits_for_it(self, load, stub_qwen_tts, monkeypatch):
+        """The model is not loaded until its warm-up ends: a request that arrives meanwhile waits for that load, instead
+        of generating on the model while the warm-up samples (one RNG for both) or loading a second copy."""
+        monkeypatch.setattr(torch.version, "hip", _HIP)
+        from_pretrained = stub_qwen_tts.Qwen3TTSModel.from_pretrained
+        loads: list[str] = []
+
+        def counted_from_pretrained(*args, **kwargs):
+            loads.append(args[0])
+            return from_pretrained(*args, **kwargs)
+
+        stub_qwen_tts.Qwen3TTSModel = types.SimpleNamespace(from_pretrained=counted_from_pretrained)
+        warming, finish = threading.Event(), threading.Event()
+        loaded_during_warm_up: list[bool] = []
+
+        def held_warm_up(_model):
+            loaded_during_warm_up.append(backend.is_loaded())
+            warming.set()
+            finish.wait(5)
+            return {}
+
+        monkeypatch.setattr(qwen_warmup, "warm_up", held_warm_up)
+        backend = pytorch_backend.PyTorchTTSBackend()
+        backend._is_model_cached = lambda _size: True
+
+        first = asyncio.create_task(backend.load_model_async("1.7B"))
+        assert await asyncio.to_thread(warming.wait, 5)
+        second = asyncio.create_task(backend.load_model_async("1.7B"))
+        await asyncio.sleep(0.05)
+        assert not second.done()
+        assert not backend.is_loaded()
+
+        finish.set()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=5)
+        assert loaded_during_warm_up == [False]
+        assert backend.is_loaded()
+        assert len(loads) == 1

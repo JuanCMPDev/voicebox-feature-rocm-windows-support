@@ -551,7 +551,8 @@ async def unload_backend(backend) -> None:
     """Free a backend's model, serialized onto the MLX worker when it has one.
 
     MLX backends expose an async ``unload`` that runs the free on the dedicated
-    MLX thread so it can't collide with an in-flight load/generate. Other
+    MLX thread so it can't collide with an in-flight load/generate; the PyTorch
+    Qwen backend's waits for the GPU turn of the queued generations. Other
     backends only carry the synchronous ``unload_model``.
     """
     unload = getattr(backend, "unload", None)
